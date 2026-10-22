@@ -14,7 +14,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const GRAPH_VERSION = "v23.0";
+const GRAPH_VERSION = "v25.0";
 
 // The Gemini prompts and request shape, copied from ai/reader.mjs into the n8n Code node.
 const readerSource = readFileSync(new URL("../ai/reader.mjs", import.meta.url), "utf8").replace(/^export /gm, "");

@@ -6,3 +6,8 @@ export function whatsappLink(text?: string) {
   if (!number) return "";
   return `https://wa.me/${number}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
 }
+
+// The order message the bot reads, e.g. "Hi MeenuBazaar! Order 1 kg Bangude cleaned.\nDeliver to: Bejai"
+export function orderText(kg: number, fishName: string, cleaned: boolean, area: string) {
+  return `Hi MeenuBazaar! Order ${kg} kg ${fishName}${cleaned ? " cleaned" : ""}.${area ? `\nDeliver to: ${area}` : ""}`;
+}

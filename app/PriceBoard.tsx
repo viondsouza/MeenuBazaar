@@ -1,9 +1,13 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
-import { whatsappLink } from "@/lib/whatsapp";
+import { orderText, whatsappLink } from "@/lib/whatsapp";
+import { FISH_INFO, type Group } from "@/lib/fish";
+import { WhatsAppIcon } from "./icons";
 
+type Fish = { key: string; name: string; english_name: string };
 type Listing = {
   id: string;
   price_per_kg: number;
@@ -11,14 +15,20 @@ type Listing = {
   kg_left: number;
   updated_at: string;
   boat_id: string;
-  fish: { key: string; name: string; english_name: string } | null;
+  fish: Fish | null;
   boats: { name: string } | null;
 };
 
 type Status = "connecting" | "live" | "offline";
+type Filter = "all" | Group;
+type Sort = "newest" | "cheapest" | "priciest";
 
-const FISH_EMOJI: Record<string, string> = { etti: "🦐", bondas: "🦑", denji: "🦀" };
 const SELLING_FAST_KG = 10;
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "fish", label: "Fish" },
+  { value: "shellfish", label: "Prawns, crab & squid" },
+];
 
 const rupees = (n: number) => `₹${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const kgText = (n: number) => `${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 })} kg`;
@@ -32,29 +42,37 @@ function timeAgo(iso: string, now: number) {
   return hours < 24 ? `${hours} hr ago` : new Date(iso).toLocaleDateString("en-IN");
 }
 
-export default function PriceBoard() {
+export default function PriceBoard({ area }: { area: string }) {
   const [listings, setListings] = useState<Listing[] | null>(null);
+  const [allFish, setAllFish] = useState<Fish[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
   const [now, setNow] = useState(0); // set on first load; the clock can't be read while pre-rendering
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [sort, setSort] = useState<Sort>("newest");
   const previous = useRef<Map<string, string>>(new Map());
 
   const load = useCallback(async () => {
     if (!supabase) return;
-    const { data, error } = await supabase
-      .from("listings")
-      .select(
-        "id, price_per_kg, previous_price_per_kg, kg_left, updated_at, boat_id, fish(key, name, english_name), boats(name)",
-      )
-      .order("updated_at", { ascending: false })
-      .returns<Listing[]>();
-    if (error) {
-      setError(error.message);
+    const [listingRes, fishRes] = await Promise.all([
+      supabase
+        .from("listings")
+        .select(
+          "id, price_per_kg, previous_price_per_kg, kg_left, updated_at, boat_id, fish(key, name, english_name), boats(name)",
+        )
+        .order("updated_at", { ascending: false })
+        .returns<Listing[]>(),
+      supabase.from("fish").select("key, name, english_name").order("name").returns<Fish[]>(),
+    ]);
+    const err = listingRes.error ?? fishRes.error;
+    if (err) {
+      setError(err.message);
       return;
     }
     setError(null);
+    const data = listingRes.data ?? [];
 
     // Highlight cards that are new or changed since the last load.
     const changed = new Set<string>();
@@ -64,6 +82,7 @@ export default function PriceBoard() {
     }
     previous.current = new Map(data.map((l) => [l.id, l.updated_at]));
     setListings(data);
+    setAllFish(fishRes.data ?? []);
     setNow(Date.now());
     if (changed.size) {
       setFlashIds(changed);
@@ -108,12 +127,22 @@ export default function PriceBoard() {
   }
 
   const q = query.trim().toLowerCase();
-  const shown = (listings ?? []).filter(
-    (l) => !q || l.fish?.name.toLowerCase().includes(q) || l.fish?.english_name.toLowerCase().includes(q),
-  );
-  // Fish you can buy first, sold-out ones last.
-  shown.sort((a, b) => Number(Number(a.kg_left) <= 0) - Number(Number(b.kg_left) <= 0));
+  const matches = (f: Fish | null) =>
+    !!f &&
+    (filter === "all" || FISH_INFO[f.key]?.group === filter) &&
+    (!q || f.name.toLowerCase().includes(q) || f.english_name.toLowerCase().includes(q));
+
   const available = (listings ?? []).filter((l) => Number(l.kg_left) > 0);
+  const shown = (listings ?? []).filter((l) => matches(l.fish));
+  shown.sort((a, b) => {
+    const soldOut = Number(Number(a.kg_left) <= 0) - Number(Number(b.kg_left) <= 0);
+    if (soldOut) return soldOut; // fish you can buy first, sold-out last
+    if (sort === "cheapest") return Number(a.price_per_kg) - Number(b.price_per_kg);
+    if (sort === "priciest") return Number(b.price_per_kg) - Number(a.price_per_kg);
+    return 0; // already newest first
+  });
+  const listedKeys = new Set(available.map((l) => l.fish?.key));
+  const notToday = allFish.filter((f) => !listedKeys.has(f.key) && matches(f));
   const boats = new Set(available.map((l) => l.boat_id)).size;
   const lastUpdate = listings?.[0]?.updated_at;
 
@@ -125,7 +154,7 @@ export default function PriceBoard() {
           <p className="board-summary">
             {listings === null
               ? "Loading prices…"
-              : `${available.length} fish · ${boats} ${boats === 1 ? "boat" : "boats"}${
+              : `${available.length} on sale · ${boats} ${boats === 1 ? "boat" : "boats"}${
                   lastUpdate ? ` · updated ${timeAgo(lastUpdate, now)}` : ""
                 }`}
           </p>
@@ -136,16 +165,36 @@ export default function PriceBoard() {
         </span>
       </div>
 
-      {(listings?.length ?? 0) > 3 && (
-        <input
-          className="search"
-          type="search"
-          placeholder="Search fish, e.g. bangude or prawns"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search fish"
-        />
-      )}
+      <div className="toolbar">
+        <div className="chips" role="group" aria-label="Show">
+          {FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              className={`chip${filter === f.value ? " chip-on" : ""}`}
+              aria-pressed={filter === f.value}
+              onClick={() => setFilter(f.value)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="toolbar-right">
+          <input
+            className="search"
+            type="search"
+            placeholder="Search bangude, prawns…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search fish"
+          />
+          <select className="sort" value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort">
+            <option value="newest">Newest first</option>
+            <option value="cheapest">Price: low to high</option>
+            <option value="priciest">Price: high to low</option>
+          </select>
+        </div>
+      </div>
 
       {error && <p className="notice">Couldn&apos;t load prices: {error}</p>}
 
@@ -168,23 +217,53 @@ export default function PriceBoard() {
       )}
 
       {!error && listings && listings.length > 0 && shown.length === 0 && (
-        <p className="notice">No fish matches “{query}”.</p>
+        <p className="notice">Nothing on sale matches that. Try another filter or search.</p>
       )}
 
       <ul className="grid">
         {shown.map((l) => (
-          <FishCard key={l.id} listing={l} now={now} flash={flashIds.has(l.id)} />
+          <FishCard key={l.id} listing={l} now={now} flash={flashIds.has(l.id)} area={area} />
         ))}
       </ul>
+
+      {listings && notToday.length > 0 && (
+        <>
+          <h3 className="subhead">Not in today&apos;s catch</h3>
+          <ul className="mini-grid">
+            {notToday.map((f) => {
+              const ask = whatsappLink(`Hi MeenuBazaar! Is ${f.name} available today?`);
+              return (
+                <li key={f.key} className="mini">
+                  <div className="mini-photo">
+                    {FISH_INFO[f.key] && (
+                      <Image src={FISH_INFO[f.key].photo} alt={f.english_name} fill sizes="160px" />
+                    )}
+                  </div>
+                  <div className="mini-text">
+                    <span className="mini-name">{f.name}</span>
+                    <span className="mini-english">{f.english_name}</span>
+                    {ask && (
+                      <a href={ask} target="_blank" rel="noopener noreferrer" className="mini-ask">
+                        Ask on WhatsApp
+                      </a>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
     </>
   );
 }
 
-function FishCard({ listing: l, now, flash }: { listing: Listing; now: number; flash: boolean }) {
+function FishCard({ listing: l, now, flash, area }: { listing: Listing; now: number; flash: boolean; area: string }) {
   const [kg, setKg] = useState(1);
   const [cleaned, setCleaned] = useState(false);
 
   const name = l.fish?.name ?? "Fish";
+  const info = FISH_INFO[l.fish?.key ?? ""];
   const left = Number(l.kg_left);
   const price = Number(l.price_per_kg);
   const soldOut = left <= 0;
@@ -192,86 +271,78 @@ function FishCard({ listing: l, now, flash }: { listing: Listing; now: number; f
   const amount = Math.min(kg, maxKg);
   const prev = l.previous_price_per_kg;
   const move = prev == null ? 0 : price - Number(prev);
-  const link = whatsappLink(`Order ${amount} kg ${name}${cleaned ? " cleaned" : ""}`);
+  const link = whatsappLink(orderText(amount, name, cleaned, area));
 
   return (
     <li className={`card${flash ? " flash" : ""}${soldOut ? " sold-out" : ""}`}>
-      <div className="card-top">
-        <span className="fish-emoji" aria-hidden>
-          {FISH_EMOJI[l.fish?.key ?? ""] ?? "🐟"}
+      <div className="photo">
+        {info && <Image src={info.photo} alt={l.fish?.english_name ?? name} fill sizes="(max-width: 700px) 100vw, 340px" />}
+        <span className="price-badge">
+          {rupees(price)}
+          <small>/kg</small>
         </span>
-        <div className="fish-names">
+        {move !== 0 && (
+          <span className={`move-badge ${move > 0 ? "up" : "down"}`}>
+            {move > 0 ? "▲" : "▼"} {rupees(Math.abs(move))}
+          </span>
+        )}
+      </div>
+
+      <div className="card-body">
+        <div>
           <h3>{name}</h3>
           <p className="english">{l.fish?.english_name}</p>
         </div>
-        <div className="price">
-          <span className="price-num">{rupees(price)}</span>
-          <span className="per">per kg</span>
-        </div>
-      </div>
 
-      <div className="tags">
-        {move !== 0 && (
-          <span className={`tag ${move > 0 ? "tag-up" : "tag-down"}`}>
-            {move > 0 ? "▲" : "▼"} {rupees(Math.abs(move))} {move > 0 ? "up" : "down"}
-          </span>
-        )}
-        {soldOut ? (
-          <span className="tag tag-muted">Sold out</span>
-        ) : (
-          <span className={`tag ${left < SELLING_FAST_KG ? "tag-warn" : "tag-muted"}`}>
-            {left < SELLING_FAST_KG ? `Selling fast · ${kgText(left)} left` : `${kgText(left)} left`}
-          </span>
-        )}
-      </div>
-
-      <p className="meta">
-        ⛵ {l.boats?.name ?? "Boat"} · listed {timeAgo(l.updated_at, now)}
-      </p>
-
-      {!soldOut && (
-        <div className="picker">
-          <div className="stepper" role="group" aria-label={`Amount of ${name}`}>
-            <button type="button" onClick={() => setKg(Math.max(0.5, amount - 0.5))} disabled={amount <= 0.5} aria-label="Less">
-              −
-            </button>
-            <span className="stepper-value">{kgText(amount)}</span>
-            <button type="button" onClick={() => setKg(Math.min(maxKg, amount + 0.5))} disabled={amount + 0.5 > maxKg} aria-label="More">
-              +
-            </button>
-          </div>
-          <label className="toggle">
-            <input type="checkbox" checked={cleaned} onChange={(e) => setCleaned(e.target.checked)} />
-            <span>Cleaned</span>
-          </label>
-        </div>
-      )}
-
-      {soldOut ? (
-        <span className="order disabled">Sold out today</span>
-      ) : (
-        <>
-          <p className="estimate">
-            About <strong>{rupees(Math.round(amount * price))}</strong>
-            <span> · final total confirmed on WhatsApp</span>
-          </p>
-          {link ? (
-            <a className="order" href={link} target="_blank" rel="noopener noreferrer">
-              <WhatsAppIcon /> Order on WhatsApp
-            </a>
+        <div className="tags">
+          {soldOut ? (
+            <span className="tag tag-muted">Sold out</span>
           ) : (
-            <span className="order disabled">WhatsApp ordering opens soon</span>
+            <span className={`tag ${left < SELLING_FAST_KG ? "tag-warn" : "tag-fresh"}`}>
+              {left < SELLING_FAST_KG ? `Selling fast · ${kgText(left)} left` : `${kgText(left)} left`}
+            </span>
           )}
-        </>
-      )}
-    </li>
-  );
-}
+          <span className="tag tag-muted">
+            ⛵ {l.boats?.name ?? "Boat"} · {timeAgo(l.updated_at, now)}
+          </span>
+        </div>
 
-function WhatsAppIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden fill="currentColor">
-      <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2c-1.5 0-3-.4-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1-.7-.3-1.5-.7-2.3-1.5-.6-.6-1-1.2-1.2-1.6-.1-.2 0-.4.1-.5l.4-.4.2-.4v-.4l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.2s.9 2.5 1 2.7c.1.2 1.8 2.8 4.4 3.9 1.6.7 2.3.7 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3Z" />
-    </svg>
+        {!soldOut && (
+          <div className="picker">
+            <div className="stepper" role="group" aria-label={`Amount of ${name}`}>
+              <button type="button" onClick={() => setKg(Math.max(0.5, amount - 0.5))} disabled={amount <= 0.5} aria-label="Less">
+                −
+              </button>
+              <span className="stepper-value">{kgText(amount)}</span>
+              <button type="button" onClick={() => setKg(Math.min(maxKg, amount + 0.5))} disabled={amount + 0.5 > maxKg} aria-label="More">
+                +
+              </button>
+            </div>
+            <label className="toggle">
+              <input type="checkbox" checked={cleaned} onChange={(e) => setCleaned(e.target.checked)} />
+              <span>Cleaned</span>
+            </label>
+          </div>
+        )}
+
+        {soldOut ? (
+          <span className="order disabled">Sold out today</span>
+        ) : (
+          <>
+            <p className="estimate">
+              About <strong>{rupees(Math.round(amount * price))}</strong>
+              <span>{area ? ` · deliver to ${area}` : " · total confirmed on WhatsApp"}</span>
+            </p>
+            {link ? (
+              <a className="order" href={link} target="_blank" rel="noopener noreferrer">
+                <WhatsAppIcon /> Order on WhatsApp
+              </a>
+            ) : (
+              <span className="order disabled">WhatsApp ordering opens soon</span>
+            )}
+          </>
+        )}
+      </div>
+    </li>
   );
 }
