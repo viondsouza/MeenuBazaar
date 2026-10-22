@@ -1,3 +1,18 @@
+import { CHANNEL } from "@/lib/chat";
+
+export function TelegramIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden fill="currentColor">
+      <path d="M21.9 4.3 18.7 19.4c-.2 1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.3-5 9.1-8.2c.4-.4-.1-.6-.6-.2L6.2 13 1.4 11.5c-1-.3-1-1 .2-1.5L20.6 2.8c.9-.3 1.6.2 1.3 1.5Z" />
+    </svg>
+  );
+}
+
+// The icon of whichever chat app the site is using (see lib/chat.ts).
+export function ChatIcon({ size = 18 }: { size?: number }) {
+  return CHANNEL === "Telegram" ? <TelegramIcon size={size} /> : <WhatsAppIcon size={size} />;
+}
+
 export function WhatsAppIcon({ size = 18 }: { size?: number }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden fill="currentColor">

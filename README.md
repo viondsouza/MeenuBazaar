@@ -147,12 +147,57 @@ Import this repo in Vercel and add `NEXT_PUBLIC_SUPABASE_URL`,
 `NEXT_PUBLIC_WHATSAPP_NUMBER`. **Never** add the Supabase secret key or the OpenRouter key to
 Vercel; they live only in n8n.
 
+## Telegram demo
+
+WhatsApp is the long-term channel, but Meta blocks message delivery until the business adds a
+payment method. For demos, the same bot also runs on **Telegram**, side by side with WhatsApp:
+same n8n flow, same Gemini reader, same Supabase functions.
+
+**How it maps users:** Telegram never shares phone numbers with bots, only a numeric user ID.
+`boats.telegram_id` links a Telegram user to a boat; anyone else is a customer, stored as
+`tg:<id>`. Two thin wrappers, `tg_inbound()` and `tg_after_ai()`, translate the ID and then call
+the existing `inbound()`/`after_ai()`, which still use `save_catch`, `place_order` and
+`set/take_pending` unchanged.
+
+**Ordering from the website:** Telegram links can't pre-type a message, so "Order on Telegram"
+opens `t.me/<bot>?start=order-bangude-1_5-c-kankanady`. When the customer taps **Start**, the
+workflow turns that into "Order 1.5 kg bangude cleaned. Deliver to: Kankanady" and Gemini
+reads it like any other order.
+
+### Set it up
+
+1. **Create the bot:** in Telegram, message **@BotFather** → `/newbot` → pick a name and a
+   username ending in `bot`. Keep the token secret: it goes only into n8n.
+2. **Database:** run the latest `supabase/schema.sql` in the Supabase SQL Editor.
+3. **n8n:** add a **Telegram** credential (the token), named `Telegram bot`. Run
+   `npm run build:n8n`, open `n8n/telegram-workflow.local.json`, copy it all and paste it onto
+   an empty n8n canvas (or import `n8n/telegram-workflow.json` and fill in `SUPABASE_URL` in
+   "Read message"). On each box choose its credential (Supabase secret key, OpenRouter key,
+   Telegram bot), then **Publish**.
+4. **Register the fisherman:** from the fisherman's Telegram, send `/start` to the bot. It
+   replies with "Your Telegram ID: …". In Supabase run:
+   `update boats set telegram_id = '<that id>' where id = '00000000-0000-0000-0000-000000000001';`
+5. **Website:** set `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (the username, without `@`) in Vercel
+   and redeploy. The order buttons switch to Telegram; unset it to go back to WhatsApp.
+
+### Demo checks
+
+1. **Fisherman:** send `bangude 50 220` → "Please check your catch… Reply YES" → `YES` → the
+   Bangude card on the board updates within seconds, no refresh.
+2. **Customer** (another Telegram account): on the board tap **Order on Telegram** → **Start** →
+   the bot shows the total → `YES` → the customer gets the UPI ID, the kg on the board drops,
+   and the fisherman's chat gets "📦 New order: please pack…".
+3. **Bad input:** `hello fish`, `1 kg shark` or `999 kg bangude` get a helpful reply ("only N kg
+   left") and change nothing on the board. `bangude 50 220` from a non-boat account is read
+   as an order, never a catch.
+
 ## What's in the repo
 
 | Path | What it is |
 |---|---|
 | `app/page.tsx`, `app/PriceBoard.tsx` | The website and the live price board |
-| `lib/supabase.ts`, `lib/whatsapp.ts` | Read-only Supabase connection; WhatsApp order links |
+| `lib/supabase.ts`, `lib/chat.ts` | Read-only Supabase connection; WhatsApp or Telegram order links |
+| `n8n/` | The WhatsApp and Telegram workflows to import (built by `npm run build:n8n`) |
 | `supabase/` | Database tables, functions, access rules, demo data and self-test |
 | `ai/reader.mjs` | Gemini prompts and the JSON shapes it must answer in |
 | `scripts/check-setup.mjs` | Checks the website's Supabase keys and access rules |

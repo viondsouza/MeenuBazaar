@@ -19,6 +19,10 @@ create table if not exists boats (
   created_at timestamptz not null default now()
 );
 
+-- Telegram demo: Telegram doesn't share phone numbers with bots, only a numeric user ID.
+-- A Telegram user whose ID is here is treated as that boat. (Hidden from the browser.)
+alter table boats add column if not exists telegram_id text unique;
+
 -- Fish the app understands, with the local names people actually type.
 create table if not exists fish (
   key text primary key,            -- short id, e.g. 'bangude'
@@ -436,7 +440,7 @@ begin
   select * into v_fish from fish where key = p_reading->>'fish';
   v_kg := coalesce((p_reading->>'kg')::numeric, 1);
   v_cleaned := coalesce((p_reading->>'cleaned')::boolean, false);
-  if not found or v_kg <= 0 or v_kg > 100 then
+  if not found or v_kg <= 0 then
     return jsonb_build_object('action', 'reply', 'phone', p_phone, 'reply', help_text('order'));
   end if;
 
@@ -447,8 +451,12 @@ begin
     return jsonb_build_object('action', 'reply', 'phone', p_phone, 'reply',
       case when coalesce(v_most, 0) > 0
         then 'Sorry, only ' || fmt_num(v_most) || ' kg of ' || v_fish.name || E' is left. Send a smaller amount, e.g. *'
-             || fmt_num(v_most) || ' kg ' || v_fish.key || '*.'
+             || fmt_num(least(v_most, 100)) || ' kg ' || v_fish.key || '*.'
         else 'Sorry, ' || v_fish.name || E' is not available right now.\n' || todays_fish() end);
+  end if;
+  if v_kg > 100 then
+    return jsonb_build_object('action', 'reply', 'phone', p_phone,
+      'reply', 'Sorry, we take up to 100 kg per order. Please send a smaller amount.');
   end if;
 
   perform set_pending(p_phone, 'order',
@@ -458,6 +466,81 @@ begin
              || case when v_cleaned then ' (cleaned)' else '' end
              || E'\n₹' || fmt_num(v_price) || '/kg × ' || fmt_num(v_kg) || ' kg = *₹' || fmt_num(round(v_kg * v_price, 2))
              || E'*\n\nReply *YES* to order, or *NO* to cancel.');
+end;
+$$;
+
+-- ═══ Telegram demo ════════════════════════════════════════════════════════
+-- Thin wrappers so the Telegram workflow reuses inbound()/after_ai() unchanged.
+-- They turn a Telegram user ID into the key those functions use:
+--   a registered boat → its phone, anyone else → 'tg:<telegram id>' (a customer).
+-- Replies come back as { action, chat_id, reply, alert_chat_id?, alert? }, plain text.
+
+create or replace function tg_sender(p_telegram_id text)
+returns text
+language sql
+stable
+set search_path = public
+as $$
+  select coalesce((select phone from boats where telegram_id = p_telegram_id), 'tg:' || p_telegram_id)
+$$;
+
+-- Adapt a WhatsApp-style reply for Telegram: reply to the chat, send the pack alert to
+-- the boat's Telegram, and drop WhatsApp's *bold* stars (Telegram shows plain text).
+create or replace function tg_finish(p_telegram_id text, r jsonb)
+returns jsonb
+language plpgsql
+stable
+set search_path = public
+as $$
+declare
+  v_alert_chat text;
+begin
+  if r->>'action' = 'read' then
+    return (r - 'phone') || jsonb_build_object('chat_id', p_telegram_id, 'telegram_id', p_telegram_id);
+  end if;
+  if r->>'alert_phone' is not null then
+    select telegram_id into v_alert_chat from boats where phone = r->>'alert_phone';
+  end if;
+  return jsonb_strip_nulls(jsonb_build_object(
+    'action', 'reply',
+    'chat_id', p_telegram_id,
+    'reply', replace(r->>'reply', '*', ''),
+    'alert_chat_id', v_alert_chat,
+    'alert', case when v_alert_chat is not null then replace(r->>'alert', '*', '') end));
+end;
+$$;
+
+create or replace function tg_inbound(p_telegram_id text, p_text text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_boat boats%rowtype;
+begin
+  -- /start (or /help): say hello, and show the Telegram ID so a boat owner can be registered.
+  if lower(split_part(trim(coalesce(p_text, '')), ' ', 1)) in ('/start', '/help') then
+    select * into v_boat from boats where telegram_id = p_telegram_id;
+    return jsonb_build_object('action', 'reply', 'chat_id', p_telegram_id, 'reply',
+      case when found
+        then 'Welcome back, ' || v_boat.name || E'! 🎣\n' || replace(help_text('catch'), '*', '')
+        else E'Welcome to MeenuBazaar! 🐟\n' || replace(help_text('order'), '*', '')
+             || E'\n\nToday''s prices: meenubazaar.vercel.app' end
+      || E'\n\nYour Telegram ID: ' || p_telegram_id);
+  end if;
+  return tg_finish(p_telegram_id, inbound(tg_sender(p_telegram_id), p_text));
+end;
+$$;
+
+create or replace function tg_after_ai(p_telegram_id text, p_kind text, p_reading jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return tg_finish(p_telegram_id, after_ai(tg_sender(p_telegram_id), p_kind, p_reading));
 end;
 $$;
 
@@ -472,6 +555,12 @@ revoke execute on function inbound(text, text) from public, anon, authenticated;
 revoke execute on function after_ai(text, text, jsonb) from public, anon, authenticated;
 grant execute on function inbound(text, text) to service_role;
 grant execute on function after_ai(text, text, jsonb) to service_role;
+revoke execute on function tg_inbound(text, text) from public, anon, authenticated;
+revoke execute on function tg_after_ai(text, text, jsonb) from public, anon, authenticated;
+revoke execute on function tg_sender(text) from public, anon, authenticated;
+revoke execute on function tg_finish(text, jsonb) from public, anon, authenticated;
+grant execute on function tg_inbound(text, text) to service_role;
+grant execute on function tg_after_ai(text, text, jsonb) to service_role;
 grant execute on function resolve_fish(text) to service_role;
 grant execute on function save_catch(text, text, numeric, numeric) to service_role;
 grant execute on function place_order(text, text, numeric, boolean) to service_role;

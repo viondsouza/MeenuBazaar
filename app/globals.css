@@ -1071,3 +1071,28 @@ h3,
   font-size: 12px;
   line-height: 1.6;
 }
+
+/* ─── Telegram demo: Telegram blue instead of WhatsApp green ─── */
+
+.order-telegram,
+.btn-telegram,
+.btn-small-telegram,
+.fab-telegram {
+  background: #229ed9;
+}
+
+.order-telegram:hover,
+.btn-telegram:hover,
+.btn-small-telegram:hover,
+.fab-telegram:hover {
+  background: #1a8bc2;
+}
+
+.btn-telegram,
+.btn-small-telegram {
+  color: #fff;
+}
+
+.mini-ask-telegram {
+  color: #229ed9;
+}

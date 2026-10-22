@@ -10,6 +10,7 @@ declare
   v_boat text := (select phone from boats where id = '00000000-0000-0000-0000-000000000001');
   r jsonb;
   p jsonb;
+  v_tg_saved text;
 begin
   perform reset_demo();
 
@@ -99,6 +100,61 @@ begin
               and (select kg_left from listings where fish_key = 'bangude') = 49
          then 'PASS' else 'FAIL: ' || r::text end);
 
+  -- ─ The Telegram demo: same flow through tg_inbound()/tg_after_ai() ─
+  -- The boat's real Telegram ID (if any) is put back at the end.
+  perform reset_demo();
+  v_tg_saved := (select telegram_id from boats where id = '00000000-0000-0000-0000-000000000001');
+  update boats set telegram_id = 'TEST111' where id = '00000000-0000-0000-0000-000000000001';
+
+  r := tg_inbound('TEST111', '/start');
+  insert into test_results (test, result) values ('telegram: /start greets the boat and shows its ID',
+    case when r->>'reply' like 'Welcome back, Sri Durga%TEST111' then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := tg_inbound('TEST111', 'bangude 50 220');
+  insert into test_results (test, result) values ('telegram: boat message goes to Gemini as a catch',
+    case when r->>'action' = 'read' and r->>'kind' = 'catch' and r->>'chat_id' = 'TEST111'
+         then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := tg_after_ai('TEST111', 'catch', '{"understood":true,"items":[{"fish":"bangude","kg":50,"price_per_kg":220}],"question":null}');
+  insert into test_results (test, result) values ('telegram: bot repeats the catch (plain text, no stars)',
+    case when r->>'reply' like '%Bangude: 50 kg at ₹220/kg%Reply YES%' and r->>'reply' not like '%*%'
+         then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := tg_inbound('TEST111', 'YES');
+  insert into test_results (test, result) values ('telegram: boat YES puts the catch live',
+    case when r->>'reply' like '%Live on the MeenuBazaar board%'
+              and (select kg_left from listings where fish_key = 'bangude') = 50
+         then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := tg_inbound('TEST222', 'bangude 50 220');
+  insert into test_results (test, result) values ('telegram: a non-boat user can''t post a catch (read as an order)',
+    case when r->>'kind' = 'order' then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := tg_after_ai('TEST222', 'catch', '{"understood":false,"items":[],"question":"Which fish?"}');
+  perform tg_after_ai('TEST222', 'order', '{"understood":false,"fish":"unknown","kg":1,"cleaned":false,"question":"Which fish would you like?"}');
+  insert into test_results (test, result) values ('telegram: unclear messages change nothing on the board',
+    case when (select count(*) from listings) = 1 and (select kg_left from listings where fish_key = 'bangude') = 50
+         then 'PASS' else 'FAIL' end);
+
+  r := tg_after_ai('TEST222', 'order', '{"understood":true,"fish":"bangude","kg":1,"cleaned":true,"question":null}');
+  insert into test_results (test, result) values ('telegram: customer sees the total and is asked for YES',
+    case when r->>'reply' like '%1 kg Bangude (cleaned)%₹220%Reply YES%' then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := tg_inbound('TEST222', 'yes');
+  insert into test_results (test, result) values ('telegram: customer YES → UPI ID, stock down, pack alert to the boat''s Telegram',
+    case when r->>'reply' like '%Order confirmed%UPI%' and r->>'alert_chat_id' = 'TEST111' and r->>'alert' like '%pack%'
+              and (select kg_left from listings where fish_key = 'bangude') = 49
+         then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := tg_after_ai('TEST222', 'order', '{"understood":true,"fish":"bangude","kg":60,"cleaned":false,"question":null}');
+  insert into test_results (test, result) values ('telegram: too many kg says how many are left',
+    case when r->>'reply' like '%only 49 kg%' then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := tg_after_ai('TEST222', 'order', '{"understood":true,"fish":"bangude","kg":999,"cleaned":false,"question":null}');
+  insert into test_results (test, result) values ('telegram: a huge order (999 kg) also says how many are left',
+    case when r->>'reply' like '%only 49 kg%' then 'PASS' else 'FAIL: ' || r::text end);
+
+  update boats set telegram_id = v_tg_saved where id = '00000000-0000-0000-0000-000000000001';
   perform reset_demo();
 end;
 $$;

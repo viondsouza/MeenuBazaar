@@ -1,0 +1,406 @@
+{
+  "name": "MeenuBazaar Telegram bot",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "b6a1d3f4-2c7e-4f0a-9e51-7d4c8a2b6e93",
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram bot"
+        }
+      }
+    },
+    {
+      "id": "read",
+      "name": "Read message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ✏️ Your settings (not secret). Keys live in n8n Credentials, never here.\nconst SUPABASE_URL = \"https://YOUR-PROJECT.supabase.co\";\nconst incoming = $input.all();\nconst out = [];\nfor (const item of incoming) {\n  const m = item.json.message ?? item.json.edited_message;\n  if (!m?.from || m.from.is_bot) continue;\n  let text = m.text ?? m.caption ?? \"\";\n  // The website's \"Order on Telegram\" button opens the bot with a code, because Telegram\n  // links can't pre-fill a message: /start order-<fish>-<kg, 1_5 = 1.5>-<c|n>[-<area>].\n  // Turn it into the same order sentence the WhatsApp button sends.\n  const deep = text.match(/^\\/start\\s+order-([a-z]+)-(\\d+(?:_\\d+)?)-([cn])(?:-([a-z]+))?$/i);\n  if (deep) {\n    const [, fish, kg, cut, area] = deep;\n    text = \"Order \" + kg.replace(\"_\", \".\") + \" kg \" + fish + (cut === \"c\" ? \" cleaned\" : \"\") + \".\" +\n      (area ? \"\\nDeliver to: \" + area[0].toUpperCase() + area.slice(1) : \"\");\n  }\n  out.push({ json: {\n    supabase_url: SUPABASE_URL.replace(/\\/rest\\/v1\\/?$|\\/$/, \"\"),\n    telegram_id: String(m.from.id),\n    text,\n  } });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "inbound",
+      "name": "Supabase: tg_inbound",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.supabase_url }}/rest/v1/rpc/tg_inbound",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_telegram_id: $json.telegram_id, p_text: $json.text }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Supabase secret key"
+        }
+      }
+    },
+    {
+      "id": "needs-ai",
+      "name": "Needs Gemini?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "needs-ai-c",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "read",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "build-ai",
+      "name": "Build Gemini request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        160
+      ],
+      "parameters": {
+        "jsCode": "// Copied from ai/reader.mjs by scripts/build-n8n.mjs. Edit it there, then rebuild.\n// The AI \"reader\": turns a messy WhatsApp message into clean data, using a Google\n// Gemini model through OpenRouter. The AI only READS. It never sets prices, checks stock\n// or replies by itself; the n8n workflow and the database do that.\n//\n// This file is the single source of the prompts and answer shapes. scripts/test-ai.mjs\n// tests it on your Mac, and the same text is copied into the n8n workflow.\n\nconst MODEL = \"google/gemini-3.7-flash\";\nconst OPENROUTER_URL = \"https://openrouter.ai/api/v1/chat/completions\";\n\n// \"bangude (also: bangda, ayala, mackerel)\" — one line per fish, from the Supabase fish table.\nfunction fishList(fish) {\n  return fish.map((f) => `- ${f.key} (also: ${f.aliases.join(\", \")}; English: ${f.english_name})`).join(\"\\n\");\n}\n\nconst CATCH_PROMPT = (fish) => `You read WhatsApp messages from fishing-boat owners at Mangaluru harbour.\nThey report what they caught and the price they want. Messages are short and mix English,\nKannada, Tulu and Konkani, often in Roman letters, with no fixed format.\n\nPull out every fish they offer, with:\n- fish: the matching key from the list below, or \"unknown\" if it is not on the list\n- kg: total kilograms (convert \"quintal\" = 100 kg, \"ton\" = 1000 kg, number words in any language)\n- price_per_kg: rupees per kg (the number written with rs, ₹, rate, or the second number)\n\nUsual pattern is \"<fish> <kg> <price>\", e.g. \"bangude 50 220\" = 50 kg bangude at ₹220/kg.\nSet understood=false if the message is not a catch report, or if any fish is missing its kg or\nprice. Then write a short, friendly question in \"question\" asking for what is missing.\nNever guess a number that is not in the message.\n\nFish list:\n${fishList(fish)}`;\n\nconst ORDER_PROMPT = (fish) => `You read WhatsApp messages from customers in Mangaluru ordering fresh fish.\nThey write like they talk, mixing English, Kannada, Tulu and Konkani.\n\nPull out:\n- fish: the matching key from the list below, or \"unknown\" if it is not on the list\n- kg: kilograms wanted (\"1 kilo\" = 1, \"half kg\" = 0.5, \"500 g\" = 0.5, \"1.5kg\" = 1.5).\n  Never turn \"1 kilo\" into 10. If no amount is given, use 1.\n- cleaned: true only if they ask for it cleaned/cut/dressed\n\nSet understood=false if the message is not a fish order (a greeting, a question, a complaint),\nor asks for more than one fish. Then write a short, friendly reply in \"question\"\n(for several fish: ask them to order one fish per message).\nThe reply must never promise anything: no delivery areas or times, prices, stock or discounts.\nFor questions you can't answer from this message, say a MeenuBazaar person will reply soon,\nand that they can order by sending a fish name and kg, e.g. \"1 kg bangude cleaned\".\n\nFish list:\n${fishList(fish)}`;\n\nfunction catchSchema(fish) {\n  const keys = [...fish.map((f) => f.key), \"unknown\"];\n  return {\n    type: \"object\",\n    additionalProperties: false,\n    required: [\"understood\", \"items\", \"question\"],\n    properties: {\n      understood: { type: \"boolean\" },\n      items: {\n        type: \"array\",\n        items: {\n          type: \"object\",\n          additionalProperties: false,\n          required: [\"fish\", \"kg\", \"price_per_kg\"],\n          properties: {\n            fish: { type: \"string\", enum: keys },\n            kg: { type: \"number\" },\n            price_per_kg: { type: \"number\" },\n          },\n        },\n      },\n      question: { type: [\"string\", \"null\"] },\n    },\n  };\n}\n\nfunction orderSchema(fish) {\n  const keys = [...fish.map((f) => f.key), \"unknown\"];\n  return {\n    type: \"object\",\n    additionalProperties: false,\n    required: [\"understood\", \"fish\", \"kg\", \"cleaned\", \"question\"],\n    properties: {\n      understood: { type: \"boolean\" },\n      fish: { type: \"string\", enum: keys },\n      kg: { type: \"number\" },\n      cleaned: { type: \"boolean\" },\n      question: { type: [\"string\", \"null\"] },\n    },\n  };\n}\n\n// The exact request body sent to OpenRouter. kind is \"catch\" (fisherman) or \"order\" (customer).\nfunction buildRequest(kind, fish, message) {\n  const isCatch = kind === \"catch\";\n  return {\n    model: MODEL,\n    temperature: 0,\n    // Only Google's own servers answer, and only ones that honour the JSON shape. No fallbacks.\n    provider: { only: [\"google-vertex\", \"google-ai-studio\"], allow_fallbacks: false, require_parameters: true },\n    response_format: {\n      type: \"json_schema\",\n      json_schema: {\n        name: isCatch ? \"catch_report\" : \"fish_order\",\n        strict: true,\n        schema: isCatch ? catchSchema(fish) : orderSchema(fish),\n      },\n    },\n    messages: [\n      { role: \"system\", content: isCatch ? CATCH_PROMPT(fish) : ORDER_PROMPT(fish) },\n      { role: \"user\", content: message },\n    ],\n  };\n}\n\nconst j = $input.first().json;\nreturn [{ json: { telegram_id: j.telegram_id, kind: j.kind, request: buildRequest(j.kind, j.fish, j.text) } }];"
+      }
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini (OpenRouter)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "OpenRouter key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "read-ai",
+      "name": "Read Gemini answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const asked = $('Build Gemini request').first().json;\nconst res = $input.first().json;\nlet reading = null; // null tells the database to say \"please send it again\"\ntry {\n  reading = JSON.parse(res.choices[0].message.content);\n} catch (e) {}\nreturn [{ json: {\n  supabase_url: $('Read message').first().json.supabase_url,\n  telegram_id: asked.telegram_id,\n  kind: asked.kind,\n  reading,\n} }];"
+      }
+    },
+    {
+      "id": "after-ai",
+      "name": "Supabase: tg_after_ai",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.supabase_url }}/rest/v1/rpc/tg_after_ai",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_telegram_id: $json.telegram_id, p_kind: $json.kind, p_reading: $json.reading }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Supabase secret key"
+        }
+      }
+    },
+    {
+      "id": "ready",
+      "name": "Reply ready",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "send-reply",
+      "name": "Send Telegram reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1980,
+        220
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.reply }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram bot"
+        }
+      }
+    },
+    {
+      "id": "has-alert",
+      "name": "Pack alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "has-alert-c",
+              "leftValue": "={{ $json.alert_chat_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "send-alert",
+      "name": "Send pack alert to boat",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2200,
+        400
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.alert_chat_id }}",
+        "text": "={{ $json.alert }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read message": {
+      "main": [
+        [
+          {
+            "node": "Supabase: tg_inbound",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: tg_inbound": {
+      "main": [
+        [
+          {
+            "node": "Needs Gemini?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Gemini?": {
+      "main": [
+        [
+          {
+            "node": "Build Gemini request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Gemini request": {
+      "main": [
+        [
+          {
+            "node": "Gemini (OpenRouter)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini (OpenRouter)": {
+      "main": [
+        [
+          {
+            "node": "Read Gemini answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Gemini answer": {
+      "main": [
+        [
+          {
+            "node": "Supabase: tg_after_ai",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: tg_after_ai": {
+      "main": [
+        [
+          {
+            "node": "Reply ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply ready": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram reply",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Pack alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack alert?": {
+      "main": [
+        [
+          {
+            "node": "Send pack alert to boat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

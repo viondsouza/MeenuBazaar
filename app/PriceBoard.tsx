@@ -3,9 +3,9 @@
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
-import { orderText, whatsappLink } from "@/lib/whatsapp";
+import { CHANNEL, chatLink, orderLink } from "@/lib/chat";
 import { FISH_INFO, type Group } from "@/lib/fish";
-import { WhatsAppIcon } from "./icons";
+import { ChatIcon } from "./icons";
 
 type Fish = { key: string; name: string; english_name: string };
 type Listing = {
@@ -231,7 +231,7 @@ export default function PriceBoard({ area }: { area: string }) {
           <h3 className="subhead">Not in today&apos;s catch</h3>
           <ul className="mini-grid">
             {notToday.map((f) => {
-              const ask = whatsappLink(`Hi MeenuBazaar! Is ${f.name} available today?`);
+              const ask = chatLink(`Hi MeenuBazaar! Is ${f.name} available today?`);
               return (
                 <li key={f.key} className="mini">
                   <div className="mini-photo">
@@ -243,8 +243,8 @@ export default function PriceBoard({ area }: { area: string }) {
                     <span className="mini-name">{f.name}</span>
                     <span className="mini-english">{f.english_name}</span>
                     {ask && (
-                      <a href={ask} target="_blank" rel="noopener noreferrer" className="mini-ask">
-                        Ask on WhatsApp
+                      <a href={ask} target="_blank" rel="noopener noreferrer" className={`mini-ask mini-ask-${CHANNEL.toLowerCase()}`}>
+                        Ask on {CHANNEL}
                       </a>
                     )}
                   </div>
@@ -271,7 +271,7 @@ function FishCard({ listing: l, now, flash, area }: { listing: Listing; now: num
   const amount = Math.min(kg, maxKg);
   const prev = l.previous_price_per_kg;
   const move = prev == null ? 0 : price - Number(prev);
-  const link = whatsappLink(orderText(amount, name, cleaned, area));
+  const link = l.fish ? orderLink(amount, l.fish.key, name, cleaned, area) : "";
 
   return (
     <li className={`card${flash ? " flash" : ""}${soldOut ? " sold-out" : ""}`}>
@@ -331,14 +331,14 @@ function FishCard({ listing: l, now, flash, area }: { listing: Listing; now: num
           <>
             <p className="estimate">
               About <strong>{rupees(Math.round(amount * price))}</strong>
-              <span>{area ? ` · deliver to ${area}` : " · total confirmed on WhatsApp"}</span>
+              <span>{area ? ` · deliver to ${area}` : ` · total confirmed on ${CHANNEL}`}</span>
             </p>
             {link ? (
-              <a className="order" href={link} target="_blank" rel="noopener noreferrer">
-                <WhatsAppIcon /> Order on WhatsApp
+              <a className={`order order-${CHANNEL.toLowerCase()}`} href={link} target="_blank" rel="noopener noreferrer">
+                <ChatIcon /> Order on {CHANNEL}
               </a>
             ) : (
-              <span className="order disabled">WhatsApp ordering opens soon</span>
+              <span className="order disabled">{CHANNEL} ordering opens soon</span>
             )}
           </>
         )}

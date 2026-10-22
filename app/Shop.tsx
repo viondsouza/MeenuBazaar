@@ -3,12 +3,12 @@
 import { useState } from "react";
 import PriceBoard from "./PriceBoard";
 import { AREAS, BUNDER, kmBetween, nearestArea } from "@/lib/areas";
-import { whatsappLink } from "@/lib/whatsapp";
-import { WhatsAppIcon } from "./icons";
+import { CHANNEL, chatLink } from "@/lib/chat";
+import { ChatIcon } from "./icons";
 
 type Locating = "idle" | "busy" | "denied" | "unsupported";
 
-// The delivery area picker, the price board and the floating WhatsApp button,
+// The delivery area picker, the price board and the floating chat button,
 // sharing the chosen area so every order message says where to deliver.
 export default function Shop() {
   const [area, setArea] = useState("");
@@ -33,7 +33,7 @@ export default function Shop() {
     );
   }
 
-  const chat = whatsappLink(`Hi MeenuBazaar! What fish do you have today?${area ? `\nI'm in ${area}.` : ""}`);
+  const chat = chatLink(`Hi MeenuBazaar! What fish do you have today?${area ? `\nI'm in ${area}.` : ""}`);
 
   return (
     <>
@@ -62,15 +62,15 @@ export default function Shop() {
               ? "Your browser can't share location. Please choose your area."
               : km != null
                 ? `${area} is about ${km.toFixed(1)} km from Bunder. Fresh fish, cleaned and delivered in 2–3 hours.`
-                : "Pick your area and we'll add it to your WhatsApp order."}
+                : "Pick your area and we'll add it to your order."}
         </p>
       </div>
 
       <PriceBoard area={area} />
 
       {chat && (
-        <a className="fab" href={chat} target="_blank" rel="noopener noreferrer" aria-label="Chat on WhatsApp">
-          <WhatsAppIcon size={26} />
+        <a className={`fab fab-${CHANNEL.toLowerCase()}`} href={chat} target="_blank" rel="noopener noreferrer" aria-label={`Chat on ${CHANNEL}`}>
+          <ChatIcon size={26} />
         </a>
       )}
     </>

@@ -1,24 +1,24 @@
 import Image from "next/image";
 import Shop from "./Shop";
-import { FishMark, WhatsAppIcon } from "./icons";
-import { whatsappLink } from "@/lib/whatsapp";
+import { ChatIcon, FishMark } from "./icons";
+import { CHANNEL, chatLink } from "@/lib/chat";
 import { AREAS } from "@/lib/areas";
 import { PHOTO_CREDITS } from "@/lib/fish";
 
 const STEPS = [
   { emoji: "🐟", title: "Pick your fish", text: "See today's catch from Mangaluru boats, at the price the boat owner set." },
-  { emoji: "💬", title: "Order on WhatsApp", text: "Choose the kg, cleaning and your area. Tap the button and send. The bot confirms the total." },
+  { emoji: "💬", title: `Order on ${CHANNEL}`, text: "Choose the kg, cleaning and your area, then tap the button. The bot confirms the total." },
   { emoji: "🛵", title: "Pay and receive", text: "Pay the boat by UPI. Fresh fish, iced and cleaned, at your door in 2–3 hours." },
 ];
 
 const FAQ = [
   {
     q: "How do I pay?",
-    a: "By UPI, straight to the boat owner. After you reply YES on WhatsApp, the bot sends you the total and the UPI ID.",
+    a: `By UPI, straight to the boat owner. After you reply YES on ${CHANNEL}, the bot sends you the total and the UPI ID.`,
   },
   {
     q: "Can you clean and cut the fish?",
-    a: "Yes. Tick “Cleaned” on the card, or write “cleaned” in your WhatsApp message. A partner vendor at the harbour cleans it before delivery.",
+    a: `Yes. Tick “Cleaned” on the card, or write “cleaned” in your ${CHANNEL} message. A partner vendor at the harbour cleans it before delivery.`,
   },
   {
     q: "How fresh is it?",
@@ -30,13 +30,13 @@ const FAQ = [
   },
   {
     q: "I'm a boat owner. How do I sell?",
-    a: "Send your catch on WhatsApp, like “bangude 50 220” (fish, kg, price per kg). Reply YES and it goes live on this board.",
+    a: `Send your catch on ${CHANNEL}, like “bangude 50 220” (fish, kg, price per kg). Reply YES and it goes live on this board.`,
   },
 ];
 
 export default function Home() {
-  const chat = whatsappLink("Hi MeenuBazaar! What fish do you have today?");
-  const sell = whatsappLink("bangude 50 220");
+  const chat = chatLink("Hi MeenuBazaar! What fish do you have today?");
+  const sell = chatLink("bangude 50 220");
   return (
     <>
       <header className="topbar">
@@ -53,8 +53,8 @@ export default function Home() {
             <a href="#faq">FAQ</a>
           </nav>
           {chat && (
-            <a className="btn btn-small" href={chat} target="_blank" rel="noopener noreferrer">
-              <WhatsAppIcon size={16} /> Chat
+            <a className={`btn btn-small btn-small-${CHANNEL.toLowerCase()}`} href={chat} target="_blank" rel="noopener noreferrer">
+              <ChatIcon size={16} /> Chat
             </a>
           )}
         </div>
@@ -70,7 +70,7 @@ export default function Home() {
               Fish straight from the boat, <em>at the boat owner&apos;s price.</em>
             </h1>
             <p className="lede">
-              No middlemen. See live prices from local boats, order on WhatsApp, and get it cleaned and delivered
+              No middlemen. See live prices from local boats, order on {CHANNEL}, and get it cleaned and delivered
               across Mangaluru.
             </p>
             <div className="hero-actions">
@@ -78,8 +78,8 @@ export default function Home() {
                 See today&apos;s catch
               </a>
               {chat && (
-                <a className="btn btn-whatsapp" href={chat} target="_blank" rel="noopener noreferrer">
-                  <WhatsAppIcon /> Order on WhatsApp
+                <a className={`btn btn-${CHANNEL.toLowerCase()}`} href={chat} target="_blank" rel="noopener noreferrer">
+                  <ChatIcon /> Order on {CHANNEL}
                 </a>
               )}
             </div>
@@ -123,7 +123,7 @@ export default function Home() {
 
         <section id="how" className="wrap section">
           <p className="eyebrow">How it works</p>
-          <h2 className="section-title">Three taps, one WhatsApp message</h2>
+          <h2 className="section-title">Three taps, one chat message</h2>
           <ol className="steps">
             {STEPS.map((s, i) => (
               <li key={s.title} className="step">
@@ -144,16 +144,16 @@ export default function Home() {
               <p className="eyebrow">For boat owners</p>
               <h2 className="section-title">Sell your catch in one message</h2>
               <p className="muted">
-                Send the fish, kg and your price on WhatsApp. We read it, you reply <strong>YES</strong>, and it goes
+                Send the fish, kg and your price on {CHANNEL}. We read it, you reply <strong>YES</strong>, and it goes
                 live on this board for buyers across Mangaluru. You set the price. You get paid by UPI the same day.
               </p>
               {sell && (
                 <a className="btn" href={sell} target="_blank" rel="noopener noreferrer">
-                  <WhatsAppIcon /> Post my catch
+                  <ChatIcon /> Post my catch
                 </a>
               )}
             </div>
-            <div className="chat" aria-label="Example WhatsApp chat">
+            <div className="chat" aria-label="Example chat">
               <p className="bubble bubble-out">bangude 50 220</p>
               <p className="bubble bubble-in">
                 Please check your catch:
@@ -188,7 +188,7 @@ export default function Home() {
               <FishMark size={24} />
               <span>MeenuBazaar</span>
             </span>
-            <span>Prices are set by boat owners and update live. Orders are confirmed on WhatsApp.</span>
+            <span>Prices are set by boat owners and update live. Orders are confirmed on {CHANNEL}.</span>
           </div>
           <p className="credits">
             Photos from Wikimedia Commons:{" "}

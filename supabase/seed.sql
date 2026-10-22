@@ -5,10 +5,15 @@
 -- every other number is treated as a customer.
 -- ⚠️ BEFORE RUNNING: replace 919999999999 with the fisherman test phone's WhatsApp number
 --    (country code + number, digits only, no + or spaces), and the UPI ID with a real one.
-insert into boats (id, name, phone, upi_id)
-values ('00000000-0000-0000-0000-000000000001', 'Sri Durga', '919999999999', 'sridurga.demo@upi')
+-- Telegram demo: telegram_id is the fisherman's Telegram user ID. Leave it null here; send
+-- /start to the bot to see your ID, then run:
+--   update boats set telegram_id = '<your id>' where id = '00000000-0000-0000-0000-000000000001';
+-- Re-running this file keeps an ID that is already set.
+insert into boats (id, name, phone, upi_id, telegram_id)
+values ('00000000-0000-0000-0000-000000000001', 'Sri Durga', '919999999999', 'sridurga.demo@upi', null)
 on conflict (id) do update
-  set name = excluded.name, phone = excluded.phone, upi_id = excluded.upi_id;
+  set name = excluded.name, phone = excluded.phone, upi_id = excluded.upi_id,
+      telegram_id = coalesce(excluded.telegram_id, boats.telegram_id);
 
 -- Fish names as people type them at Bunder (Tulu, Kannada, Konkani, Malayalam, English).
 -- Aliases must be lowercase. Add more spellings whenever someone types a name the app doesn't know.
