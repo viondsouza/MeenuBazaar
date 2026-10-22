@@ -80,3 +80,6 @@ export const CheckIcon = (p: { size?: number }) => (
 export const TrashIcon = (p: { size?: number }) => (
   <Line {...p}><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" /></Line>
 );
+export const SparkleIcon = (p: { size?: number }) => (
+  <Line {...p}><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8Z" /><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8Z" /></Line>
+);

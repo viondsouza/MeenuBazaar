@@ -6,7 +6,7 @@ const NAMES: Record<string, string> = {
   maanji: "Maanji (White pomfret)", "kappu-maanji": "Kappu Maanji (Black pomfret)", kane: "Kane (Ladyfish)",
   balchatte: "Balchatte (Ribbon fish)", kedar: "Kedar (Tuna)", modhe: "Modhe (Mullet)", etti: "Etti (Prawns)",
   "tiger-etti": "Tiger Etti (Tiger prawns)", denji: "Denji (Crab)", bondas: "Bondas (Squid)", marvai: "Marvai (Clams)",
-  harbour: "Fishing boats at Mangaluru harbour",
+  harbour: "Fishing trawler off Mangaluru",
 };
 
 // The photos are from Wikimedia Commons; their free licences ask us to name the photographer.

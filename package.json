@@ -9,7 +9,8 @@
     "lint": "eslint",
     "check:setup": "node --env-file=.env.local scripts/check-setup.mjs",
     "test:ai": "node --env-file=.env.local scripts/test-ai.mjs",
-    "build:n8n": "node --env-file=.env.local scripts/build-n8n.mjs"
+    "build:n8n": "node --env-file=.env.local scripts/build-n8n.mjs",
+    "ai:insights": "npx --yes tsx@4 --env-file=.env.local scripts/ai-insights.mts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

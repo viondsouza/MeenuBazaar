@@ -7,13 +7,14 @@ import FishPhoto from "./FishPhoto";
 import GradeSeal from "./GradeSeal";
 import HeartButton from "./HeartButton";
 import EveningBanner from "./EveningBanner";
-import HarbourInsights from "./HarbourInsights";
+import ai from "@/lib/ai-insights.json";
 import { AreaSelect, LangToggle, Wordmark } from "./bits";
 import { CheckIcon, PlusIcon, SearchIcon } from "../icons";
 import { addToCart } from "@/lib/cart";
 import { useFavs } from "@/lib/favs";
-import { usePrefs } from "@/lib/prefs";
-import { DISHES, FISH, availableKg, cooksAs, offersFor, priceOf, useMarket, type Fish, type Group } from "@/lib/catalog";
+import { setArea, usePrefs } from "@/lib/prefs";
+import { AREAS } from "@/lib/areas";
+import { DISHES, FISH, availableKg, cooksAs, deliverySlots, offersFor, priceOf, useMarket, type Fish, type Group } from "@/lib/catalog";
 import { kgText, rupees } from "@/lib/format";
 
 const CATEGORIES: { value: Group | "all"; label: string; kn: string; photo: string }[] = [
@@ -33,7 +34,7 @@ export const time12 = (hhmm: string) => {
 export default function ShopHome() {
   const market = useMarket();
   const favs = useFavs();
-  const { lang } = usePrefs();
+  const { lang, area } = usePrefs();
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState<Group | "all">("all");
   const [dish, setDish] = useState("");
@@ -84,6 +85,7 @@ export default function ShopHome() {
     setSavedOnly(false);
   }
 
+  const firstSlot = market.hour !== null ? deliverySlots(market.hour).find((sl) => !sl.full) : undefined;
   const boatsToday = new Set(cards.flatMap((c) => c.offers.map((o) => o.boat.id))).size;
 
   return (
@@ -98,22 +100,39 @@ export default function ShopHome() {
 
       <section className="hero">
         <div className="hero-photo">
-          <Image src="/fish/harbour.jpg" alt="Colourful fishing boats at Mangaluru harbour" fill priority sizes="520px" className="hero-img" />
+          <Image src="/fish/harbour-trawler.jpg" alt="A blue fishing trawler on the water off Mangaluru" fill priority sizes="520px" className="hero-img" />
         </div>
         <div className="hero-shade" />
         <div className="hero-body">
           <p className="hero-kicker">
-            <span className="live-dot" aria-hidden /> {kn ? "ಇಂದಿನ ತಾಜಾ ಮೀನು" : "Live from Mangaluru harbour"}
+            <span className="live-dot" aria-hidden /> {kn ? "ಇಂದು ಬೆಳಿಗ್ಗೆ ಬಂದ ಮೀನು" : "Landed this morning · Bunder, Malpe, Gangolli"}
           </p>
           <h1 className="hero-title">
             {kn ? (
-              "ದೋಣಿಯಿಂದ ನೇರವಾಗಿ ನಿಮ್ಮ ಮನೆಗೆ"
+              "ಮಂಗಳೂರಿನ ದೋಣಿಗಳಿಂದ ಇಂದಿನ ಮೀನು"
             ) : (
               <>
-                <span>From the boat</span> <span>to your kitchen,</span> <span className="hero-accent">on ice.</span>
+                <span>Today&apos;s catch from</span> <span className="hero-accent">Mangaluru boats</span>
               </>
             )}
           </h1>
+          <label className="hero-deliver">
+            <span aria-hidden>📍</span>
+            <span className="sr-only">Deliver to</span>
+            <select value={area} onChange={(e) => setArea(e.target.value)}>
+              <option value="">{kn ? "ನಿಮ್ಮ ಪ್ರದೇಶ ಆಯ್ಕೆಮಾಡಿ" : "Choose where you live"}</option>
+              {AREAS.map((a) => (
+                <option key={a.name} value={a.name}>
+                  {kn ? a.name : `Deliver to ${a.name}`}
+                </option>
+              ))}
+            </select>
+            {firstSlot && (
+              <span className="hero-slot">
+                {firstSlot.day} {firstSlot.label}
+              </span>
+            )}
+          </label>
           <ul className="hero-stats">
             <li>
               <strong>{boatsToday}</strong> boats
@@ -165,7 +184,15 @@ export default function ShopHome() {
         </ul>
 
         <EveningBanner />
-        <HarbourInsights cards={cards} />
+        <Link href="/insights" className="ai-teaser">
+          <span className="ai-badge ai-badge-sm" aria-hidden>
+            ✨
+          </span>
+          <span>
+            <strong>{ai.headline}</strong>
+            <span>AI Insights: today&apos;s best buys and smart picks →</span>
+          </span>
+        </Link>
 
         <div className="cats" role="group" aria-label="Categories">
           {CATEGORIES.map((c) => (

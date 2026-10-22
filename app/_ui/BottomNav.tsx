@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCart } from "@/lib/cart";
-import { CartIcon, PricesIcon, ShopIcon } from "../icons";
+import { CartIcon, PricesIcon, ShopIcon, SparkleIcon } from "../icons";
 
 const TABS = [
   { href: "/", label: "Shop", Icon: ShopIcon },
   { href: "/prices", label: "Prices", Icon: PricesIcon },
+  { href: "/insights", label: "AI Insights", Icon: SparkleIcon },
   { href: "/cart", label: "Cart", Icon: CartIcon },
 ];
 

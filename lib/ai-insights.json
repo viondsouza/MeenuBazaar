@@ -1,0 +1,51 @@
+{
+  "model": "google/gemini-3.7-flash",
+  "generatedAt": "2026-10-22T12:27:46.213Z",
+  "basedOn": "Morning prices of the demo catalogue",
+  "headline": "Fresh Bhutai and Bangude lead today's Mangaluru catch",
+  "summary": "Bhutai is plentiful today with 550 kg available at ₹160/kg. Premium fish like Maanji and Anjal are also fresh at the docks.",
+  "insights": [
+    {
+      "emoji": "📉",
+      "title": "Best Deal Below Average",
+      "text": "Bangude is at ₹210/kg today, lower than its week average of ₹225/kg across 3 boats.",
+      "fishKey": "bangude"
+    },
+    {
+      "emoji": "📈",
+      "title": "Pricier Than Usual",
+      "text": "Balchatte is ₹260/kg today, which is higher than its week average of ₹243/kg.",
+      "fishKey": "balchatte"
+    },
+    {
+      "emoji": "🐟",
+      "title": "Most Plentiful Supply",
+      "text": "Bhutai leads today's supply with 550 kg available at ₹160/kg from 2 boats.",
+      "fishKey": "bhutai"
+    },
+    {
+      "emoji": "⭐",
+      "title": "Grade A Premium Choice",
+      "text": "Maanji offers Grade A quality at ₹1100/kg with 28 kg brought in by 2 boats.",
+      "fishKey": "maanji"
+    }
+  ],
+  "picks": [
+    {
+      "label": "Budget pick",
+      "fishKey": "bhutai",
+      "reason": "At ₹160/kg with 550 kg available, it is an affordable choice for curry or rava fry."
+    },
+    {
+      "label": "Family pick",
+      "fishKey": "bangude",
+      "reason": "Costing ₹210/kg, this Grade A catch serves 3–4 people and is great for tawa fry."
+    },
+    {
+      "label": "Special occasion",
+      "fishKey": "anjal",
+      "reason": "Grade A Anjal at ₹950/kg serves 4 people perfectly for a festive tawa fry."
+    }
+  ],
+  "tip": "Bhutai at ₹160/kg is ideal for rava fry or curry to serve 3–4 people."
+}
