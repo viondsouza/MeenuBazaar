@@ -15,6 +15,11 @@ export type Fish = {
   english: string;
   group: Group;
   about: string;
+  bestFor: string[]; // dishes it's best for
+  serves: string; // per kg
+  pieces: string; // per kg
+  cleanYield: number; // % of the weight left after cleaning
+  photo: { fit?: "cover" | "contain"; pos?: string; bg?: string }; // how to frame /fish/<key>.jpg
 };
 
 export type Boat = { id: string; name: string; harbour: string; type: string; rating: number };
@@ -28,23 +33,38 @@ export type Listing = {
   kg: number; // kg landed for sale today
   landed: string; // "05:45"
   checked: boolean; // freshness checked at the harbour
+  grade: "A" | "B" | null; // quality grade from the harbour check
 };
 
 export const FISH: Fish[] = [
-  { key: "bangude", name: "Bangude", kn: "ಬಂಗುಡೆ", english: "Indian mackerel", group: "fish", about: "Mangaluru's favourite for fry and curry. 6–8 fish per kg." },
-  { key: "bhutai", name: "Bhutai", kn: "ಬೂತಾಯಿ", english: "Oil sardine", group: "fish", about: "Small, rich and full of flavour. Best as rava fry. 12–15 fish per kg." },
-  { key: "anjal", name: "Anjal", kn: "ಅಂಜಲ್", english: "Seer fish", group: "fish", about: "Firm, boneless steaks. The king of fish fry." },
-  { key: "maanji", name: "Maanji", kn: "ಮಾಂಜಿ", english: "White pomfret", group: "fish", about: "Soft, mild white fish. Great tawa fried or in gassi. 3–4 fish per kg." },
-  { key: "kappu-maanji", name: "Kappu Maanji", kn: "ಕಪ್ಪು ಮಾಂಜಿ", english: "Black pomfret", group: "fish", about: "Meatier than white pomfret, great for masala fry." },
-  { key: "kane", name: "Kane", kn: "ಕಾಣೆ", english: "Ladyfish", group: "fish", about: "Delicate and sweet. A local favourite for fry." },
-  { key: "balchatte", name: "Balchatte", kn: "ಬಾಳೆ ಮೀನು", english: "Ribbon fish", group: "fish", about: "Long and silvery. Cut into pieces for fry or curry." },
-  { key: "kedar", name: "Kedar", kn: "ಕೇದರ್", english: "Tuna", group: "fish", about: "Big, meaty fish. Sold in steaks for curry and sukka." },
-  { key: "modhe", name: "Modhe", kn: "ಮೊದೆ", english: "Mullet", group: "fish", about: "Mild river-mouth fish, good for curry." },
-  { key: "etti", name: "Etti", kn: "ಎಟ್ಟಿ", english: "Prawns", group: "prawns", about: "Medium white prawns for sukka, ghee roast and pulao." },
-  { key: "tiger-etti", name: "Tiger Etti", kn: "ಟೈಗರ್ ಎಟ್ಟಿ", english: "Tiger prawns", group: "prawns", about: "Large striped prawns. Perfect for tandoori and butter garlic." },
-  { key: "denji", name: "Denji", kn: "ಏಡಿ", english: "Crab", group: "shellfish", about: "Live mud crabs for crab gassi and pepper fry." },
-  { key: "bondas", name: "Bondas", kn: "ಬೊಂಡಾಸ್", english: "Squid", group: "shellfish", about: "Tender squid rings for butter garlic and pepper fry." },
-  { key: "marvai", name: "Marvai", kn: "ಮರ್ವಾಯಿ", english: "Clams", group: "shellfish", about: "Fresh clams for marvai sukka. Cleaned on request." },
+  { key: "bangude", name: "Bangude", kn: "ಬಂಗುಡೆ", english: "Indian mackerel", group: "fish", about: "Mangaluru's favourite for fry and curry. 6–8 fish per kg.",
+    bestFor: ["Fry", "Curry", "Tawa"], serves: "3–4 people", pieces: "6–8 fish", cleanYield: 70, photo: { fit: "contain", bg: "#f4f4f2" } },
+  { key: "bhutai", name: "Bhutai", kn: "ಬೂತಾಯಿ", english: "Oil sardine", group: "fish", about: "Small, rich and full of flavour. Best as rava fry. 12–15 fish per kg.",
+    bestFor: ["Rava fry", "Curry"], serves: "3–4 people", pieces: "12–15 fish", cleanYield: 65, photo: {} },
+  { key: "anjal", name: "Anjal", kn: "ಅಂಜಲ್", english: "Seer fish", group: "fish", about: "Firm, boneless steaks. The king of fish fry.",
+    bestFor: ["Fry", "Tawa", "Curry"], serves: "4 people", pieces: "8–10 steaks", cleanYield: 80, photo: { fit: "contain", bg: "#ffffff" } },
+  { key: "maanji", name: "Maanji", kn: "ಮಾಂಜಿ", english: "White pomfret", group: "fish", about: "Soft, mild white fish. Great tawa fried or in gassi. 3–4 fish per kg.",
+    bestFor: ["Tawa fry", "Gassi"], serves: "3–4 people", pieces: "3–4 fish", cleanYield: 70, photo: {} },
+  { key: "kappu-maanji", name: "Kappu Maanji", kn: "ಕಪ್ಪು ಮಾಂಜಿ", english: "Black pomfret", group: "fish", about: "Meatier than white pomfret, great for masala fry.",
+    bestFor: ["Masala fry", "Curry"], serves: "3–4 people", pieces: "2–3 fish", cleanYield: 70, photo: {} },
+  { key: "kane", name: "Kane", kn: "ಕಾಣೆ", english: "Ladyfish", group: "fish", about: "Delicate and sweet. A local favourite for fry.",
+    bestFor: ["Fry"], serves: "3 people", pieces: "8–10 fish", cleanYield: 65, photo: { fit: "contain", bg: "#000000" } },
+  { key: "balchatte", name: "Balchatte", kn: "ಬಾಳೆ ಮೀನು", english: "Ribbon fish", group: "fish", about: "Long and silvery. Cut into pieces for fry or curry.",
+    bestFor: ["Fry", "Curry"], serves: "3–4 people", pieces: "1–2 fish, cut in pieces", cleanYield: 70, photo: {} },
+  { key: "kedar", name: "Kedar", kn: "ಕೇದರ್", english: "Tuna", group: "fish", about: "Big, meaty fish. Sold in steaks for curry and sukka.",
+    bestFor: ["Curry", "Sukka"], serves: "4 people", pieces: "8–10 steaks", cleanYield: 75, photo: { fit: "contain", bg: "#cfd0cc" } },
+  { key: "modhe", name: "Modhe", kn: "ಮೊದೆ", english: "Mullet", group: "fish", about: "Mild river-mouth fish, good for curry.",
+    bestFor: ["Curry", "Fry"], serves: "3 people", pieces: "3–4 fish", cleanYield: 65, photo: {} },
+  { key: "etti", name: "Etti", kn: "ಎಟ್ಟಿ", english: "Prawns", group: "prawns", about: "Medium white prawns for sukka, ghee roast and pulao.",
+    bestFor: ["Sukka", "Ghee roast", "Pulao"], serves: "3–4 people", pieces: "40–50 prawns", cleanYield: 55, photo: {} },
+  { key: "tiger-etti", name: "Tiger Etti", kn: "ಟೈಗರ್ ಎಟ್ಟಿ", english: "Tiger prawns", group: "prawns", about: "Large striped prawns. Perfect for tandoori and butter garlic.",
+    bestFor: ["Tandoori", "Butter garlic"], serves: "3 people", pieces: "15–20 prawns", cleanYield: 60, photo: {} },
+  { key: "denji", name: "Denji", kn: "ಏಡಿ", english: "Crab", group: "shellfish", about: "Live mud crabs for crab gassi and pepper fry.",
+    bestFor: ["Gassi", "Pepper fry"], serves: "2–3 people", pieces: "3–4 crabs", cleanYield: 40, photo: { pos: "center 60%" } },
+  { key: "bondas", name: "Bondas", kn: "ಬೊಂಡಾಸ್", english: "Squid", group: "shellfish", about: "Tender squid rings for butter garlic and pepper fry.",
+    bestFor: ["Butter garlic", "Pepper fry"], serves: "3–4 people", pieces: "8–10 squid", cleanYield: 75, photo: {} },
+  { key: "marvai", name: "Marvai", kn: "ಮರ್ವಾಯಿ", english: "Clams", group: "shellfish", about: "Fresh clams for marvai sukka. Cleaned on request.",
+    bestFor: ["Sukka"], serves: "3 people", pieces: "60–80 clams", cleanYield: 30, photo: {} },
 ];
 
 const BOATS: Record<string, Boat> = {
@@ -58,6 +78,7 @@ const BOATS: Record<string, Boat> = {
 const fish = (key: string) => FISH.find((f) => f.key === key)!;
 const L = (id: string, f: string, b: string, price: number, lastPrice: number, kg: number, landed: string, checked: boolean): Listing => ({
   id, fish: fish(f), boat: BOATS[b], price, lastPrice, kg, landed, checked,
+  grade: checked ? (["kane-durga", "modhe-sagar", "marvai-hanuman"].includes(id) ? "B" : "A") : null,
 });
 
 export const LISTINGS: Listing[] = [
@@ -181,3 +202,7 @@ export function resetDemo() {
   sold.set({});
   orders.set([]);
 }
+
+// Every cooking style used in bestFor, for the "Cooking for" filter.
+export const DISHES = ["Fry", "Curry", "Tawa", "Sukka", "Butter garlic", "Gassi"];
+export const cooksAs = (f: Fish, dish: string) => f.bestFor.some((b) => b.toLowerCase().includes(dish.toLowerCase()));

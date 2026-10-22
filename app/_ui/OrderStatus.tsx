@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import FishArt from "../FishArt";
+import { FishThumb } from "./FishPhoto";
+import { useRouter } from "next/navigation";
+import { addToCart } from "@/lib/cart";
 import { FishName } from "./bits";
 import { CheckIcon } from "../icons";
-import { CUT_LABEL, useOrders } from "@/lib/catalog";
+import { CUT_LABEL, getListing, kgLeft, useOrders, useSold } from "@/lib/catalog";
 import { kgText, rupees } from "@/lib/format";
 
 const STEPS = [
@@ -19,6 +21,16 @@ export default function OrderStatus() {
   const { code } = useParams<{ code: string }>();
   const justPlaced = useSearchParams().get("new") === "1";
   const order = useOrders().find((o) => o.code === code);
+  const router = useRouter();
+  const sold = useSold();
+
+  function orderAgain() {
+    for (const it of order?.items ?? []) {
+      const l = getListing(it.listingId);
+      if (l && kgLeft(l, sold) >= 0.5) addToCart({ ...it, pricePerKg: l.price }, kgLeft(l, sold));
+    }
+    router.push("/cart");
+  }
 
   if (!order) {
     return (
@@ -78,9 +90,7 @@ export default function OrderStatus() {
       <ul className="cart-list">
         {order.items.map((it, i) => (
           <li key={i} className="cart-item">
-            <div className="art-tile art-tile-sm">
-              <FishArt kind={it.fishKey} />
-            </div>
+            <FishThumb fishKey={it.fishKey} />
             <div className="cart-info">
               <p className="cart-name">
                 <FishName name={it.fishName} kn={it.fishKn} />
@@ -121,9 +131,14 @@ export default function OrderStatus() {
         Delivering to {order.name}, {order.address}, {order.area} · {order.phone.replace(/(\d{5})(\d{5})/, "$1 $2")}
       </p>
 
-      <Link href="/" className="btn btn-outline btn-wide">
-        Continue shopping
-      </Link>
+      <div className="two-btns">
+        <button type="button" className="btn btn-outline" onClick={orderAgain}>
+          Order again
+        </button>
+        <Link href="/" className="btn btn-coral">
+          Keep shopping
+        </Link>
+      </div>
     </div>
   );
 }

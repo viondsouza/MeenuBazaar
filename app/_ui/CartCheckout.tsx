@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import FishArt from "../FishArt";
+import Image from "next/image";
+import { FishThumb } from "./FishPhoto";
 import { FishName } from "./bits";
 import { CheckIcon, TrashIcon } from "../icons";
-import { clearCart, removeFromCart, stepCartItem, useCart } from "@/lib/cart";
+import { addToCart, clearCart, removeFromCart, stepCartItem, useCart } from "@/lib/cart";
 import { setArea, usePrefs } from "@/lib/prefs";
 import { AREAS } from "@/lib/areas";
 import { CUT_LABEL, FEES, billFor, deliverySlots, getListing, kgLeft, placeOrder, useOrders, useSold, type Slot } from "@/lib/catalog";
@@ -40,6 +41,14 @@ export default function CartCheckout() {
   const totalKg = items.reduce((s, i) => s + i.kg, 0);
   const toFreeDelivery = FEES.freeDeliveryOver - bill.fish;
 
+  // Put a past order's fish back in the cart (at today's stock).
+  function reorder(past: typeof items) {
+    for (const it of past) {
+      const l = getListing(it.listingId);
+      if (l && kgLeft(l, sold) >= 0.5) addToCart({ ...it, pricePerKg: l.price }, kgLeft(l, sold));
+    }
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -66,7 +75,9 @@ export default function CartCheckout() {
       <div className="pad">
         <h1 className="page-title">Your cart</h1>
         <div className="empty empty-big">
-          <FishArt kind="maanji" className="empty-art" />
+          <div className="empty-photo">
+            <Image src="/fish/maanji.jpg" alt="" fill sizes="120px" />
+          </div>
           <p className="empty-title">Your cart is empty</p>
           <p>Add some fresh fish from today&apos;s catch.</p>
           <Link href="/" className="btn btn-coral">
@@ -82,10 +93,13 @@ export default function CartCheckout() {
                   <Link href={`/order/${o.code}`}>
                     <span>
                       <strong>{o.code}</strong>
-                      <span className="muted small"> · {o.items.length} {o.items.length === 1 ? "item" : "items"}</span>
+                      <span className="muted small"> · {o.items.map((i) => i.fishName).join(", ")}</span>
                     </span>
                     <span>{rupees(o.total)}</span>
                   </Link>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => reorder(o.items)}>
+                    Order again
+                  </button>
                 </li>
               ))}
             </ul>
@@ -108,9 +122,7 @@ export default function CartCheckout() {
           const left = l ? kgLeft(l, sold) : 0;
           return (
             <li key={`${it.listingId}-${it.cut}`} className="cart-item">
-              <div className="art-tile art-tile-sm">
-                <FishArt kind={it.fishKey} />
-              </div>
+              <FishThumb fishKey={it.fishKey} />
               <div className="cart-info">
                 <p className="cart-name">
                   <FishName name={it.fishName} kn={it.fishKn} />

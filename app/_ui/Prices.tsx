@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import FishArt from "../FishArt";
+import Image from "next/image";
+import { FishThumb } from "./FishPhoto";
 import { TopBar } from "./bits";
 import { usePrefs } from "@/lib/prefs";
 import { FISH, LISTINGS } from "@/lib/catalog";
@@ -30,8 +31,8 @@ export default function Prices() {
             aria-pressed={fishKey === f.key}
             onClick={() => setFishKey(f.key)}
           >
-            <span className="fish-chip-art">
-              <FishArt kind={f.key} />
+            <span className="fish-chip-photo">
+              <Image src={`/fish/${f.key}.jpg`} alt="" fill sizes="64px" />
             </span>
             <span className={kn ? "kn" : ""}>{kn ? f.kn : f.name}</span>
           </button>
@@ -40,9 +41,7 @@ export default function Prices() {
 
       <div className="panel">
         <div className="price-head">
-          <div className="art-tile art-tile-sm">
-            <FishArt kind={fish.key} />
-          </div>
+          <FishThumb fishKey={fish.key} />
           <div>
             <h2 className="h3 tight">
               {fish.name} <span className="kn muted">{fish.kn}</span>
