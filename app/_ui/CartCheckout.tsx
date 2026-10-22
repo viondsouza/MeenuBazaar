@@ -10,7 +10,7 @@ import { CheckIcon, TrashIcon } from "../icons";
 import { addToCart, clearCart, removeFromCart, stepCartItem, useCart, type CartItem } from "@/lib/cart";
 import { setArea, usePrefs } from "@/lib/prefs";
 import { AREAS } from "@/lib/areas";
-import { CUT_LABEL, FEES, availableKg, deliverySlots, placeOrder, priceCart, useMarket, useOrders, type Order } from "@/lib/catalog";
+import { CUT_LABEL, FEES, availableKg, deliverySlots, placeOrder, priceCart, townPrice, useMarket, useOrders, type Order } from "@/lib/catalog";
 import { kgText, rupees } from "@/lib/format";
 
 export default function CartCheckout() {
@@ -32,6 +32,9 @@ export default function CartCheckout() {
   const bill = priceCart(items, market);
   const totalKg = bill.lines.reduce((s, l) => s + l.filled, 0);
   const toFreeDelivery = FEES.freeDeliveryOver - bill.fish;
+  // Estimate of what the same fish costs at a town market, to show what buying direct saves.
+  const townTotal = bill.lines.reduce((s, l) => s + l.filled * townPrice(l.item.fishKey), 0);
+  const saved = Math.round(townTotal - bill.fish);
 
   // Put a past order's fish back in the cart, at today's best boats.
   function reorder(order: Order) {
@@ -228,6 +231,12 @@ export default function CartCheckout() {
           <span>To pay</span>
           <span>{rupees(bill.total)}</span>
         </p>
+        {saved > 0 && (
+          <p className="saved">
+            <span>💚 You save about {rupees(saved)}</span>
+            <span>vs a typical town-market price ({rupees(Math.round(townTotal))})</span>
+          </p>
+        )}
         {toFreeDelivery > 0 ? (
           <div className="free-bar">
             <span style={{ width: `${Math.min(100, (bill.fish / FEES.freeDeliveryOver) * 100)}%` }} />

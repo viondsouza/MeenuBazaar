@@ -378,3 +378,38 @@ export function resetDemo() {
 // Every cooking style used in bestFor, for the "Cooking" filter.
 export const DISHES = ["Fry", "Curry", "Tawa", "Sukka", "Butter garlic", "Gassi"];
 export const cooksAs = (f: Fish, dish: string) => f.bestFor.some((b) => b.toLowerCase().includes(dish.toLowerCase()));
+
+// ─── Insights ───────────────────────────────────────────────────────────────
+
+// Sample price for each of the last 6 days plus today, around the harbour rate.
+// (Demo data: the same numbers every time, so the chart is stable.)
+export function priceHistory(fishKey: string, today: number) {
+  const ref = REFERENCE_RATE[fishKey] ?? today;
+  let seed = [...fishKey].reduce((s, c) => s * 31 + c.charCodeAt(0), 7) >>> 0;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
+  const past = Array.from({ length: 6 }, () => Math.round((ref * (0.9 + rand() * 0.22)) / 5) * 5);
+  return [...past, today];
+}
+
+// What the same fish usually costs at a town market or from a door-to-door vendor,
+// after the agent's and the vendor's cut. An estimate for the "you save" line.
+export const TOWN_MARKUP = 1.35;
+export const townPrice = (fishKey: string) => Math.round(((REFERENCE_RATE[fishKey] ?? 0) * TOWN_MARKUP) / 10) * 10;
+
+// A quick Mangalorean way to cook each fish.
+export const RECIPES: Record<string, { title: string; time: string; steps: string[] }> = {
+  bangude: { title: "Bangude rava fry", time: "20 min", steps: ["Slit the cleaned fish and rub in chilli, turmeric, salt and lemon.", "Coat well in fine rava.", "Shallow fry in coconut oil, 4 minutes a side."] },
+  bhutai: { title: "Bhutai masala fry", time: "20 min", steps: ["Mix Kashmiri chilli, garlic, tamarind and salt into a paste.", "Coat the sardines and rest 10 minutes.", "Fry on a hot tawa until crisp."] },
+  anjal: { title: "Anjal tawa fry", time: "25 min", steps: ["Marinate steaks in red masala with lemon for 15 minutes.", "Press both sides in rava.", "Fry on a tawa, 3–4 minutes a side."] },
+  maanji: { title: "Maanji tawa fry", time: "25 min", steps: ["Score the pomfret and rub in chilli, turmeric and salt.", "Rest 15 minutes.", "Tawa fry in coconut oil until golden."] },
+  "kappu-maanji": { title: "Kappu maanji masala", time: "30 min", steps: ["Grind onion, chilli, garlic and coconut into a thick masala.", "Coat the fish and rest 15 minutes.", "Pan fry slowly until the masala is crisp."] },
+  kane: { title: "Kane fry", time: "20 min", steps: ["Rub cleaned ladyfish with chilli, turmeric, ginger-garlic and salt.", "Dust lightly with rice flour.", "Fry until crisp and golden."] },
+  balchatte: { title: "Balchatte curry", time: "30 min", steps: ["Grind coconut with roasted chillies and tamarind.", "Boil the masala, then add the fish pieces.", "Simmer 8 minutes, finish with a curry-leaf tadka."] },
+  kedar: { title: "Kedar sukka", time: "30 min", steps: ["Boil tuna pieces with turmeric and salt, then flake.", "Roast grated coconut, onion and sukka masala.", "Toss the tuna in and stir-fry 5 minutes."] },
+  modhe: { title: "Modhe gassi", time: "35 min", steps: ["Grind coconut, roasted chillies, coriander seeds and tamarind.", "Cook the masala with onion until it thickens.", "Add the fish and simmer 10 minutes."] },
+  etti: { title: "Etti sukka", time: "25 min", steps: ["Sauté onion with roasted coconut and Mangalorean masala.", "Add the cleaned prawns.", "Cook 6–8 minutes until dry and fragrant."] },
+  "tiger-etti": { title: "Butter garlic tiger prawns", time: "15 min", steps: ["Melt butter, add plenty of chopped garlic and chilli flakes.", "Add the prawns, cook 2 minutes a side.", "Finish with lemon and coriander."] },
+  denji: { title: "Denji gassi", time: "40 min", steps: ["Grind coconut with roasted red chillies, tamarind and spices.", "Boil the masala and add the cleaned crab pieces.", "Simmer 15 minutes until the crab turns orange."] },
+  bondas: { title: "Bondas pepper fry", time: "20 min", steps: ["Cut squid into rings and marinate with pepper, turmeric and salt.", "Sauté onion, curry leaves and green chilli.", "Add squid, cook only 3–4 minutes so it stays tender."] },
+  marvai: { title: "Marvai sukka", time: "30 min", steps: ["Open the cleaned clams in a covered pan with a little water.", "Roast coconut with onion and red masala.", "Mix in the clams and dry-fry 5 minutes."] },
+};

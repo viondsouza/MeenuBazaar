@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useState } from "react";
 import { FishThumb } from "./FishPhoto";
 import { TopBar } from "./bits";
+import PriceTrend from "./PriceTrend";
 import { usePrefs } from "@/lib/prefs";
-import { FISH, REFERENCE_RATE, isEvening, offersFor, priceOf, stockOf, useMarket, whyBest } from "@/lib/catalog";
+import { FISH, REFERENCE_RATE, isEvening, offersFor, priceHistory, priceOf, stockOf, useMarket, whyBest } from "@/lib/catalog";
 import { kgText, rupees } from "@/lib/format";
 
 // Compare today's price of one fish across boats and harbours, best pick first.
@@ -54,6 +55,7 @@ export default function Prices() {
           </div>
         </div>
 
+        {rows[0] && <PriceTrend values={priceHistory(fish.key, priceOf(rows[0], market))} compact />}
         {rows.length === 0 && <p className="muted">No boat has {fish.name} on sale right now.</p>}
         <ul className="bars">
           {rows.map((r, i) => {

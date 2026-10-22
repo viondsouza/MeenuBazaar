@@ -7,12 +7,13 @@ import FishPhoto from "./FishPhoto";
 import GradeSeal from "./GradeSeal";
 import HeartButton from "./HeartButton";
 import { FishName } from "./bits";
+import PriceTrend from "./PriceTrend";
 import { BackIcon, TruckIcon } from "../icons";
 import { addToCart, type Cut } from "@/lib/cart";
 import { usePrefs } from "@/lib/prefs";
 import { AREAS, BUNDER, kmBetween } from "@/lib/areas";
 import {
-  CUT_LABEL, FEES, allocate, availableKg, cutFee, deliverySlots, getFish, isEvening, offersFor, priceOf, stockOf, useMarket, whyBest,
+  CUT_LABEL, FEES, RECIPES, allocate, availableKg, cutFee, deliverySlots, getFish, isEvening, offersFor, priceHistory, priceOf, stockOf, useMarket, whyBest,
 } from "@/lib/catalog";
 import { kgText, rupees } from "@/lib/format";
 
@@ -124,6 +125,13 @@ export default function FishDetail() {
             <dd>{fish.bestFor.join(", ")}</dd>
           </div>
         </dl>
+
+        {shown && (
+          <div className="card-block">
+            <h2 className="h3 tight">Price, last 7 days</h2>
+            <PriceTrend values={priceHistory(fish.key, priceOf(shown, market))} />
+          </div>
+        )}
 
         {offers.length > 0 && (
           <>
@@ -259,6 +267,18 @@ export default function FishDetail() {
               <strong>{rupees(plan.fishTotal + cutting)}</strong>
             </div>
           </>
+        )}
+
+        {RECIPES[fish.key] && (
+          <div className="recipe">
+            <p className="recipe-kicker">Quick recipe · {RECIPES[fish.key].time}</p>
+            <h2 className="h3 tight">{RECIPES[fish.key].title}</h2>
+            <ol>
+              {RECIPES[fish.key].steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          </div>
         )}
 
         <div className="tip-card">

@@ -7,6 +7,7 @@ import FishPhoto from "./FishPhoto";
 import GradeSeal from "./GradeSeal";
 import HeartButton from "./HeartButton";
 import EveningBanner from "./EveningBanner";
+import HarbourInsights from "./HarbourInsights";
 import { AreaSelect, LangToggle, Wordmark } from "./bits";
 import { CheckIcon, PlusIcon, SearchIcon } from "../icons";
 import { addToCart } from "@/lib/cart";
@@ -96,19 +97,42 @@ export default function ShopHome() {
       </header>
 
       <section className="hero">
-        <Image src="/fish/harbour.jpg" alt="Colourful fishing boats at Mangaluru harbour" fill priority sizes="520px" className="hero-img" />
+        <div className="hero-photo">
+          <Image src="/fish/harbour.jpg" alt="Colourful fishing boats at Mangaluru harbour" fill priority sizes="520px" className="hero-img" />
+        </div>
         <div className="hero-shade" />
         <div className="hero-body">
-          <p className="hero-kicker">{kn ? "ಇಂದಿನ ತಾಜಾ ಮೀನು" : "Today's catch · Mangaluru coast"}</p>
-          <h1 className="hero-title">{kn ? "ದೋಣಿಯಿಂದ ನೇರವಾಗಿ ನಿಮ್ಮ ಮನೆಗೆ" : "From the boat to your kitchen, on ice"}</h1>
-          <p className="hero-sub">
-            {kn
-              ? "ಮಂಗಳೂರು, ಮಲ್ಪೆ ಮತ್ತು ಗಂಗೊಳ್ಳಿಯ ದೋಣಿಗಳಿಂದ ಇಂದು ಬೆಳಿಗ್ಗೆ ಬಂದ ಮೀನು."
-              : `${boatsToday} boats landed this morning at Mangaluru, Malpe & Gangolli. We pick the best boat for every fish.`}
+          <p className="hero-kicker">
+            <span className="live-dot" aria-hidden /> {kn ? "ಇಂದಿನ ತಾಜಾ ಮೀನು" : "Live from Mangaluru harbour"}
           </p>
-          <a href="#catch" className="btn btn-coral hero-btn">
-            {kn ? "ಮೀನು ನೋಡಿ" : "Shop today's catch"}
-          </a>
+          <h1 className="hero-title">
+            {kn ? (
+              "ದೋಣಿಯಿಂದ ನೇರವಾಗಿ ನಿಮ್ಮ ಮನೆಗೆ"
+            ) : (
+              <>
+                <span>From the boat</span> <span>to your kitchen,</span> <span className="hero-accent">on ice.</span>
+              </>
+            )}
+          </h1>
+          <ul className="hero-stats">
+            <li>
+              <strong>{boatsToday}</strong> boats
+            </li>
+            <li>
+              <strong>{cards.filter((c) => c.best).length}</strong> fish today
+            </li>
+            <li>
+              from <strong>{rupees(Math.min(...cards.filter((c) => c.best).map((c) => c.price)))}</strong>/kg
+            </li>
+          </ul>
+          <div className="hero-actions">
+            <a href="#catch" className="btn btn-white">
+              {kn ? "ಮೀನು ನೋಡಿ" : "Shop today's catch"}
+            </a>
+            <Link href="/how-it-works" className="btn btn-ghost">
+              {kn ? "ಹೇಗೆ?" : "How it works"}
+            </Link>
+          </div>
         </div>
         <svg className="wave" viewBox="0 0 1040 40" preserveAspectRatio="none" aria-hidden>
           <path d="M0,22 C70,6 140,38 220,22 C300,6 380,36 460,20 C540,6 600,34 680,22 C760,8 830,36 900,20 C960,8 1000,18 1040,22 L1040,40 L0,40 Z" />
@@ -141,6 +165,7 @@ export default function ShopHome() {
         </ul>
 
         <EveningBanner />
+        <HarbourInsights cards={cards} />
 
         <div className="cats" role="group" aria-label="Categories">
           {CATEGORIES.map((c) => (
