@@ -1,7 +1,27 @@
 # MeenuBazaar
 
-A WhatsApp-first fish marketplace for Mangaluru. Boat owners post their catch on WhatsApp, it
-appears live on a public price board, and customers order it on WhatsApp.
+An online fish market for Mangaluru. Customers shop the morning catch on the website: pick a fish,
+choose whole, cleaned or fry cut, add to cart, pick a delivery slot and pay on delivery. Boat owners
+list their catch by chat (WhatsApp, or Telegram for the demo), and an AI reads it into the shop.
+
+**Live demo:** https://meenubazaar.vercel.app
+
+### The customer shop (demo)
+
+The shop runs on **sample data** (`lib/catalog.ts`): 14 kinds of seafood from 5 boats at
+Mangaluru Bunder, Malpe and Gangolli. Everything a customer does works end to end in the browser:
+
+- **Shop:** today's catch, best prices, categories, search, sort, and English or Kannada names.
+- **Fish details:** whole, cleaned or fry cut, quantity, live price, other boats selling the same fish.
+- **Cart and checkout:** several fish, address, earliest delivery slot first (full slots are greyed
+  out), a clear bill with free delivery over ₹1,000, and **pay on delivery**. Online payment is
+  shown as "coming soon": nothing is charged.
+- **Order page:** order number, delivery slot and progress steps. Stock goes down after an order.
+- **Prices:** compare one fish across boats and harbours.
+
+Orders and stock changes are kept in the browser for the demo. The database version of checkout
+(`checkout()`, delivery slots, order tracking) is already in `supabase/schema.sql` with tests, ready
+to connect when boat owners start listing real catch.
 
 ## The job to be done
 
@@ -195,8 +215,11 @@ reads it like any other order.
 
 | Path | What it is |
 |---|---|
-| `app/page.tsx`, `app/PriceBoard.tsx` | The website and the live price board |
-| `lib/supabase.ts`, `lib/chat.ts` | Read-only Supabase connection; WhatsApp or Telegram order links |
+| `app/_ui/` | The shop pages: home, fish details, cart and checkout, order, prices |
+| `app/FishArt.tsx` | Flat drawings of every fish (no photos) |
+| `lib/catalog.ts` | Demo catalogue: fish, boats, today's catch, fees, delivery slots, orders |
+| `lib/cart.ts`, `lib/prefs.ts` | Cart, delivery area and language, remembered in the browser |
+| `lib/supabase.ts`, `lib/chat.ts` | Supabase connection; WhatsApp or Telegram links |
 | `n8n/` | The WhatsApp and Telegram workflows to import (built by `npm run build:n8n`) |
 | `supabase/` | Database tables, functions, access rules, demo data and self-test |
 | `ai/reader.mjs` | Gemini prompts and the JSON shapes it must answer in |

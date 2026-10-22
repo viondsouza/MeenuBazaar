@@ -12,8 +12,11 @@
 insert into boats (id, name, phone, upi_id, telegram_id)
 values ('00000000-0000-0000-0000-000000000001', 'Sri Durga', '919999999999', 'sridurga.demo@upi', null)
 on conflict (id) do update
-  set name = excluded.name, phone = excluded.phone, upi_id = excluded.upi_id,
-      telegram_id = coalesce(excluded.telegram_id, boats.telegram_id);
+  set name = excluded.name,
+      -- Keep a phone, UPI ID or Telegram ID that was already set; only fill in placeholders.
+      phone = case when boats.phone = '919999999999' then excluded.phone else boats.phone end,
+      upi_id = case when boats.upi_id = 'sridurga.demo@upi' then excluded.upi_id else boats.upi_id end,
+      telegram_id = coalesce(boats.telegram_id, excluded.telegram_id);
 
 -- Fish names as people type them at Bunder (Tulu, Kannada, Konkani, Malayalam, English).
 -- Aliases must be lowercase. Add more spellings whenever someone types a name the app doesn't know.
@@ -29,3 +32,14 @@ insert into fish (key, name, english_name, aliases) values
   ('balchatte', 'Balchatte', 'Ribbon fish',     array['balchatte', 'baale', 'ribbon fish', 'ribbonfish'])
 on conflict (key) do update
   set name = excluded.name, english_name = excluded.english_name, aliases = excluded.aliases;
+
+-- Kannada names shown on the website next to the English ones.
+-- ⚠️ Please check these spellings with someone at Bunder.
+update fish set name_kn = v.kn from (values
+  ('bangude', 'ಬಂಗುಡೆ'), ('bhutai', 'ಬೂತಾಯಿ'), ('anjal', 'ಅಂಜಲ್'), ('maanji', 'ಮಾಂಜಿ'),
+  ('kane', 'ಕಾಣೆ'), ('etti', 'ಎಟ್ಟಿ'), ('bondas', 'ಬೊಂಡಾಸ್'), ('denji', 'ಏಡಿ'), ('balchatte', 'ಬಾಳೆ ಮೀನು')
+) as v(key, kn) where fish.key = v.key;
+
+-- The real demo boat's details for the website.
+update boats set harbour = 'Mangaluru Bunder', boat_type = 'Trawler'
+ where id = '00000000-0000-0000-0000-000000000001';

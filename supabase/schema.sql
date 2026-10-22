@@ -68,6 +68,56 @@ create table if not exists pending (
   created_at timestamptz not null default now()
 );
 
+-- ─── Web shop additions (customers order on the website) ─────────────────
+
+alter table fish add column if not exists name_kn text;                  -- Kannada name, e.g. ಬಂಗುಡೆ
+alter table boats add column if not exists harbour text not null default 'Mangaluru Bunder';
+alter table boats add column if not exists boat_type text not null default 'Boat';
+alter table boats add column if not exists rating numeric(2,1);          -- null until real reviews exist
+alter table boats add column if not exists is_demo boolean not null default false;
+alter table listings add column if not exists landed_at timestamptz not null default now();
+alter table listings add column if not exists grade text;               -- set only after a real quality check
+alter table listings add column if not exists verified_at timestamptz;  -- when freshness was checked at the harbour
+alter table listings add column if not exists is_demo boolean not null default false;
+
+-- Delivery slots, made for today and tomorrow by delivery_slot_list(). capacity = how many
+-- orders the riders can take in that slot; booked goes up with every checkout.
+create table if not exists delivery_slots (
+  id bigint generated always as identity primary key,
+  starts_at timestamptz not null unique,
+  ends_at timestamptz not null,
+  label text not null,
+  capacity int not null default 10 check (capacity >= 0),
+  booked int not null default 0 check (booked >= 0)
+);
+
+-- A website order (one per checkout). Its fish are rows in "orders" linked by customer_order_id.
+-- The customer tracks it with the secret token; staff change status in the Supabase table view.
+create table if not exists customer_orders (
+  id uuid primary key default gen_random_uuid(),
+  code text not null unique,                                -- short, shown to people: MB-3F9K2A
+  token uuid not null unique default gen_random_uuid(),     -- secret, in the tracking link
+  customer_name text not null,
+  customer_phone text not null,
+  address text not null,
+  area text not null,
+  slot_id bigint not null references delivery_slots(id),
+  subtotal numeric(12,2) not null,
+  cutting_fee numeric(12,2) not null,
+  delivery_fee numeric(12,2) not null,
+  platform_fee numeric(12,2) not null,
+  total numeric(12,2) not null,
+  payment text not null default 'upi_on_delivery',
+  status text not null default 'placed'
+    check (status in ('placed', 'packed', 'out_for_delivery', 'delivered', 'cancelled')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table orders add column if not exists customer_order_id uuid references customer_orders(id) on delete cascade;
+alter table orders add column if not exists cut text check (cut in ('whole', 'cleaned', 'fry'));
+alter table orders add column if not exists cut_fee numeric(12,2) not null default 0;
+
 -- ─── resolve_fish: turns any spelling ("Bangda", "ayala") into a fish key ─
 create or replace function resolve_fish(p_name text)
 returns text
@@ -119,7 +169,8 @@ begin
     set previous_price_per_kg = listings.price_per_kg,
         price_per_kg = excluded.price_per_kg,
         kg_left = excluded.kg_left,
-        updated_at = now()
+        updated_at = now(),
+        landed_at = now()
   returning * into v_listing;
 
   return jsonb_build_object(
@@ -244,8 +295,10 @@ as $$
 begin
   -- "where true" is needed because Supabase refuses a delete with no where clause.
   delete from orders where true;
+  delete from customer_orders where true;
   delete from listings where true;
   delete from pending where true;
+  update delivery_slots set booked = 0 where true;
 end;
 $$;
 
@@ -544,6 +597,208 @@ begin
 end;
 $$;
 
+-- ═══ Web shop ═════════════════════════════════════════════════════════════
+-- The website (publishable key) can call these four functions and nothing else that writes.
+-- All prices and fees are worked out here, so a browser can't change what an order costs.
+
+-- Fees in rupees. ⚠️ Placeholder amounts for the demo; set the real ones before launch.
+create or replace function shop_fees()
+returns jsonb
+language sql
+immutable
+as $$
+  select jsonb_build_object('cleaned_per_kg', 30, 'fry_per_kg', 40, 'delivery', 40, 'platform', 10)
+$$;
+
+-- Creates today's and tomorrow's slots (India time) if missing, then lists the next ones.
+-- A slot can be booked only if it starts at least 90 minutes from now and isn't full.
+create or replace function delivery_slot_list()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_today date := (now() at time zone 'Asia/Kolkata')::date;
+  v_day date;
+begin
+  foreach v_day in array array[v_today, v_today + 1] loop
+    insert into delivery_slots (starts_at, ends_at, label) values
+      ((v_day + time '08:00') at time zone 'Asia/Kolkata', (v_day + time '10:00') at time zone 'Asia/Kolkata', '8–10 AM'),
+      ((v_day + time '11:00') at time zone 'Asia/Kolkata', (v_day + time '13:00') at time zone 'Asia/Kolkata', '11 AM–1 PM'),
+      ((v_day + time '17:00') at time zone 'Asia/Kolkata', (v_day + time '19:00') at time zone 'Asia/Kolkata', '5–7 PM')
+    on conflict (starts_at) do nothing;
+  end loop;
+
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'id', id,
+             'label', label,
+             'day', case when (starts_at at time zone 'Asia/Kolkata')::date = v_today then 'Today' else 'Tomorrow' end,
+             'starts_at', starts_at,
+             'spaces_left', greatest(capacity - booked, 0),
+             'full', booked >= capacity)
+           order by starts_at)
+      from delivery_slots
+     where starts_at > now() + interval '90 minutes'
+       and starts_at < (v_today + 2) at time zone 'Asia/Kolkata'), '[]'::jsonb);
+end;
+$$;
+
+-- Places a website order in one step. p_items: [{ listing_id, kg, cut, price_per_kg }]
+-- where price_per_kg is the price the customer saw. Either every fish is reserved and the
+-- order is saved, or nothing changes at all (stock, slot and orders stay as they were).
+create or replace function checkout(p_items jsonb, p_name text, p_phone text, p_address text,
+                                    p_area text, p_slot_id bigint)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_phone text := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+  v_fees jsonb := shop_fees();
+  v_slot delivery_slots%rowtype;
+  v_item jsonb;
+  v_listing listings%rowtype;
+  v_fish fish%rowtype;
+  v_kg numeric;
+  v_cut text;
+  v_cut_fee numeric;
+  v_line numeric;
+  v_subtotal numeric := 0;
+  v_cutting numeric := 0;
+  v_line_id uuid;
+  v_line_ids uuid[] := '{}';
+  v_order customer_orders%rowtype;
+begin
+  if length(trim(coalesce(p_name, ''))) < 2 then
+    return jsonb_build_object('ok', false, 'reason', 'name');
+  end if;
+  if v_phone !~ '^(91)?[6-9][0-9]{9}$' then
+    return jsonb_build_object('ok', false, 'reason', 'phone');
+  end if;
+  if length(trim(coalesce(p_address, ''))) < 8 or length(trim(coalesce(p_area, ''))) < 2 then
+    return jsonb_build_object('ok', false, 'reason', 'address');
+  end if;
+  if p_items is null or jsonb_typeof(p_items) <> 'array'
+     or jsonb_array_length(p_items) = 0 or jsonb_array_length(p_items) > 10 then
+    return jsonb_build_object('ok', false, 'reason', 'empty_cart');
+  end if;
+
+  begin  -- if anything below raises an error, all of it is undone
+    select * into v_slot from delivery_slots where id = p_slot_id for update;
+    if not found or v_slot.starts_at <= now() + interval '90 minutes' then
+      raise exception 'slot_gone';
+    end if;
+    if v_slot.booked >= v_slot.capacity then
+      raise exception 'slot_full';
+    end if;
+    update delivery_slots set booked = booked + 1 where id = v_slot.id;
+
+    for v_item in select * from jsonb_array_elements(p_items) loop
+      v_kg := (v_item->>'kg')::numeric;
+      v_cut := coalesce(v_item->>'cut', 'whole');
+      if v_kg is null or v_kg < 0.5 or v_kg > 20 or v_cut not in ('whole', 'cleaned', 'fry') then
+        raise exception 'bad_item';
+      end if;
+
+      -- Lock this boat's listing so two customers can't both take the last kilo.
+      select * into v_listing from listings where id = (v_item->>'listing_id')::uuid for update;
+      if not found then
+        raise exception 'not_listed';
+      end if;
+      select * into v_fish from fish where key = v_listing.fish_key;
+      if v_listing.price_per_kg <> (v_item->>'price_per_kg')::numeric then
+        raise exception 'price_changed:%', v_fish.name;
+      end if;
+      if v_listing.kg_left < v_kg then
+        raise exception 'not_enough:%:%', v_fish.name, fmt_num(v_listing.kg_left);
+      end if;
+
+      update listings set kg_left = kg_left - v_kg, updated_at = now() where id = v_listing.id;
+
+      v_line := round(v_kg * v_listing.price_per_kg, 2);
+      v_cut_fee := round(v_kg * case v_cut when 'cleaned' then (v_fees->>'cleaned_per_kg')::numeric
+                                           when 'fry' then (v_fees->>'fry_per_kg')::numeric
+                                           else 0 end, 2);
+      insert into orders (customer_phone, listing_id, boat_id, fish_key, kg, cleaned, price_per_kg, total,
+                          cut, cut_fee, status)
+      values ('web:' || v_phone, v_listing.id, v_listing.boat_id, v_listing.fish_key, v_kg, v_cut <> 'whole',
+              v_listing.price_per_kg, v_line, v_cut, v_cut_fee, 'placed')
+      returning id into v_line_id;
+      v_line_ids := v_line_ids || v_line_id;
+      v_subtotal := v_subtotal + v_line;
+      v_cutting := v_cutting + v_cut_fee;
+    end loop;
+
+    insert into customer_orders (code, customer_name, customer_phone, address, area, slot_id,
+                                 subtotal, cutting_fee, delivery_fee, platform_fee, total)
+    values ('MB-' || upper(substr(md5(random()::text || clock_timestamp()::text), 1, 6)),
+            trim(p_name), v_phone, trim(p_address), trim(p_area), v_slot.id,
+            v_subtotal, v_cutting, (v_fees->>'delivery')::numeric, (v_fees->>'platform')::numeric,
+            v_subtotal + v_cutting + (v_fees->>'delivery')::numeric + (v_fees->>'platform')::numeric)
+    returning * into v_order;
+    update orders set customer_order_id = v_order.id where id = any (v_line_ids);
+  exception when others then
+    return jsonb_build_object('ok', false,
+      'reason', split_part(sqlerrm, ':', 1),
+      'fish', nullif(split_part(sqlerrm, ':', 2), ''),
+      'kg_left', nullif(split_part(sqlerrm, ':', 3), ''));
+  end;
+
+  return jsonb_build_object('ok', true, 'code', v_order.code, 'token', v_order.token, 'total', v_order.total);
+end;
+$$;
+
+-- Everything the order page shows, found by the secret token from the order link.
+create or replace function get_order(p_token uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'code', o.code,
+    'status', o.status,
+    'payment', o.payment,
+    'created_at', o.created_at,
+    'updated_at', o.updated_at,
+    'customer_name', o.customer_name,
+    'address', o.address,
+    'area', o.area,
+    'slot', jsonb_build_object('label', s.label, 'starts_at', s.starts_at, 'ends_at', s.ends_at),
+    'subtotal', o.subtotal,
+    'cutting_fee', o.cutting_fee,
+    'delivery_fee', o.delivery_fee,
+    'platform_fee', o.platform_fee,
+    'total', o.total,
+    'items', (select coalesce(jsonb_agg(jsonb_build_object(
+                       'fish', f.name, 'fish_kn', f.name_kn, 'fish_key', f.key, 'kg', i.kg, 'cut', i.cut,
+                       'price_per_kg', i.price_per_kg, 'line_total', i.total, 'cut_fee', i.cut_fee,
+                       'boat', b.name, 'harbour', b.harbour) order by f.name), '[]'::jsonb)
+                from orders i join fish f on f.key = i.fish_key join boats b on b.id = i.boat_id
+               where i.customer_order_id = o.id))
+  from customer_orders o join delivery_slots s on s.id = o.slot_id
+  where o.token = p_token
+$$;
+
+-- Keep updated_at fresh when staff change an order's status in the table view.
+create or replace function touch_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+drop trigger if exists customer_orders_touch on customer_orders;
+create trigger customer_orders_touch before update on customer_orders
+  for each row execute function touch_updated_at();
+
 -- ─── Who can do what ─────────────────────────────────────────────────────
 -- Only the server (secret key, used by n8n) may run the functions that change data.
 revoke execute on function save_catch(text, text, numeric, numeric) from public, anon, authenticated;
@@ -575,7 +830,19 @@ grant all on boats, fish, listings, orders, pending to service_role;
 -- (never a boat owner's phone number or UPI ID). Orders and pending stay private.
 revoke all on boats, fish, listings, orders, pending from anon, authenticated;
 grant select on fish, listings to anon, authenticated;
-grant select (id, name) on boats to anon, authenticated;
+grant select (id, name, harbour, boat_type, rating, is_demo) on boats to anon, authenticated;
+
+-- Web shop: customers can place and track orders only through these functions.
+-- They can't read other people's orders, slots or phone numbers directly.
+grant all on delivery_slots, customer_orders to service_role;
+revoke all on delivery_slots, customer_orders from anon, authenticated;
+alter table delivery_slots enable row level security;
+alter table customer_orders enable row level security;
+grant execute on function shop_fees() to anon, authenticated, service_role;
+grant execute on function delivery_slot_list() to anon, authenticated, service_role;
+grant execute on function checkout(jsonb, text, text, text, text, bigint) to anon, authenticated, service_role;
+grant execute on function get_order(uuid) to anon, authenticated, service_role;
+revoke execute on function touch_updated_at() from public, anon, authenticated;
 
 -- Row-level security: tables with no rule for the browser are hidden from it.
 alter table boats enable row level security;

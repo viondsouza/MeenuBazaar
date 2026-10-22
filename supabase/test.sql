@@ -10,7 +10,12 @@ declare
   v_boat text := (select phone from boats where id = '00000000-0000-0000-0000-000000000001');
   r jsonb;
   p jsonb;
+  s jsonb;
   v_tg_saved text;
+  v_bangude uuid;
+  v_anjal uuid;
+  v_slot bigint;
+  v_count bigint;
 begin
   perform reset_demo();
 
@@ -155,6 +160,68 @@ begin
     case when r->>'reply' like '%only 49 kg%' then 'PASS' else 'FAIL: ' || r::text end);
 
   update boats set telegram_id = v_tg_saved where id = '00000000-0000-0000-0000-000000000001';
+
+  -- ─ Web shop: cart checkout, stock, slots and tracking ─
+  perform reset_demo();
+  perform save_catch(v_boat, 'bangude', 50, 220);
+  perform save_catch(v_boat, 'anjal', 12, 900);
+  v_bangude := (select id from listings where fish_key = 'bangude');
+  v_anjal := (select id from listings where fish_key = 'anjal');
+  s := delivery_slot_list();
+  v_slot := (select (e->>'id')::bigint from jsonb_array_elements(s) e where not (e->>'full')::boolean limit 1);
+  insert into test_results (test, result) values ('shop: delivery slots are listed, earliest first',
+    case when jsonb_array_length(s) > 0 and v_slot is not null
+              and (s->0->>'starts_at')::timestamptz <= (s->-1->>'starts_at')::timestamptz
+         then 'PASS' else 'FAIL: ' || s::text end);
+
+  r := checkout(jsonb_build_array(
+         jsonb_build_object('listing_id', v_bangude, 'kg', 1.5, 'cut', 'cleaned', 'price_per_kg', 220),
+         jsonb_build_object('listing_id', v_anjal, 'kg', 1, 'cut', 'fry', 'price_per_kg', 900)),
+       'Asha Rao', '98450 12345', 'Flat 2, Lighthouse Hill Road', 'Hampankatta', v_slot);
+  insert into test_results (test, result) values ('shop: 2-fish cart → order saved, bill = 330 + 900 + cutting 85 + delivery 40 + platform 10 = 1365',
+    case when (r->>'ok')::boolean and (r->>'total')::numeric = 1365 and r->>'code' like 'MB-%'
+         then 'PASS' else 'FAIL: ' || r::text end);
+  insert into test_results (test, result) values ('shop: checkout reserves stock (bangude 50 → 48.5, anjal 12 → 11)',
+    case when (select kg_left from listings where id = v_bangude) = 48.5
+              and (select kg_left from listings where id = v_anjal) = 11
+         then 'PASS' else 'FAIL' end);
+
+  p := get_order((r->>'token')::uuid);
+  insert into test_results (test, result) values ('shop: tracking link shows the order, its 2 fish and status',
+    case when p->>'status' = 'placed' and jsonb_array_length(p->'items') = 2 and (p->>'total')::numeric = 1365
+              and p->>'payment' = 'upi_on_delivery'
+         then 'PASS' else 'FAIL: ' || coalesce(p::text, 'null') end);
+
+  v_count := (select count(*) from customer_orders);
+  r := checkout(jsonb_build_array(
+         jsonb_build_object('listing_id', v_bangude, 'kg', 1, 'cut', 'whole', 'price_per_kg', 220),
+         jsonb_build_object('listing_id', v_anjal, 'kg', 15, 'cut', 'whole', 'price_per_kg', 900)),
+       'Asha Rao', '9845012345', 'Flat 2, Lighthouse Hill Road', 'Hampankatta', v_slot);
+  insert into test_results (test, result) values ('shop: one fish short → whole order refused, nothing changes',
+    case when not (r->>'ok')::boolean and r->>'reason' = 'not_enough' and r->>'fish' = 'Anjal' and r->>'kg_left' = '11'
+              and (select kg_left from listings where id = v_bangude) = 48.5
+              and (select count(*) from customer_orders) = v_count
+              and (select booked from delivery_slots where id = v_slot) = 1
+         then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := checkout(jsonb_build_array(jsonb_build_object('listing_id', v_bangude, 'kg', 1, 'cut', 'whole', 'price_per_kg', 199)),
+       'Asha Rao', '9845012345', 'Flat 2, Lighthouse Hill Road', 'Hampankatta', v_slot);
+  insert into test_results (test, result) values ('shop: a price that changed since adding to cart is refused',
+    case when r->>'reason' = 'price_changed' then 'PASS' else 'FAIL: ' || r::text end);
+
+  update delivery_slots set capacity = booked where id = v_slot;
+  r := checkout(jsonb_build_array(jsonb_build_object('listing_id', v_bangude, 'kg', 1, 'cut', 'whole', 'price_per_kg', 220)),
+       'Asha Rao', '9845012345', 'Flat 2, Lighthouse Hill Road', 'Hampankatta', v_slot);
+  insert into test_results (test, result) values ('shop: a full delivery slot can''t be booked',
+    case when r->>'reason' = 'slot_full' and (select kg_left from listings where id = v_bangude) = 48.5
+         then 'PASS' else 'FAIL: ' || r::text end);
+  update delivery_slots set capacity = 10 where id = v_slot;
+
+  r := checkout(jsonb_build_array(jsonb_build_object('listing_id', v_bangude, 'kg', 1, 'cut', 'whole', 'price_per_kg', 220)),
+       'Asha Rao', '12345', 'Flat 2, Lighthouse Hill Road', 'Hampankatta', v_slot);
+  insert into test_results (test, result) values ('shop: a wrong phone number is refused',
+    case when r->>'reason' = 'phone' then 'PASS' else 'FAIL: ' || r::text end);
+
   perform reset_demo();
 end;
 $$;
