@@ -1,49 +1,227 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #f4f7f8;
+  --card: #ffffff;
+  --text: #102a33;
+  --muted: #5b7079;
+  --line: #dde6e9;
+  --sea: #0b6e79;
+  --whatsapp: #1a8f4c;
+  --up: #b42318;
+  --down: #1a7f37;
+  --flash: #fff4c2;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #0c1a1f;
+    --card: #13262d;
+    --text: #e6f0f2;
+    --muted: #93a8b0;
+    --line: #23404a;
+    --sea: #4fc3cf;
+    --whatsapp: #22995a;
+    --up: #ff8a7a;
+    --down: #6fd38c;
+    --flash: #4a4320;
   }
-}
-
-html {
-  height: 100%;
-}
-
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
-
-body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
   box-sizing: border-box;
-  padding: 0;
   margin: 0;
+  padding: 0;
 }
 
-a {
-  color: inherit;
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+code {
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 16px 48px;
+}
+
+.hero {
+  margin-bottom: 28px;
+}
+
+.eyebrow {
+  color: var(--sea);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  font-size: clamp(32px, 6vw, 44px);
+  margin: 4px 0 8px;
+}
+
+.lede {
+  color: var(--muted);
+  max-width: 560px;
+  line-height: 1.5;
+}
+
+.board-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.board-bar h2 {
+  font-size: 20px;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.status-live .dot {
+  background: var(--whatsapp);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--whatsapp) 25%, transparent);
+}
+
+.status-offline .dot {
+  background: var(--up);
+}
+
+.grid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: background-color 0.6s ease;
+}
+
+.card.flash {
+  background: var(--flash);
+}
+
+.card.sold-out {
+  opacity: 0.6;
+}
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.card h3 {
+  font-size: 20px;
+}
+
+.english {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.price {
+  text-align: right;
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.per {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.move {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.move.up {
+  color: var(--up);
+}
+
+.move.down {
+  color: var(--down);
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.order {
+  display: block;
+  text-align: center;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: var(--whatsapp);
+  color: #fff;
+  font-weight: 600;
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+.order:hover {
+  filter: brightness(1.08);
+}
+
+.order.disabled {
+  background: var(--line);
+  color: var(--muted);
+}
+
+.empty,
+.notice {
+  background: var(--card);
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  padding: 24px 16px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.notice {
+  border-style: solid;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+.footer {
+  margin-top: 32px;
+  color: var(--muted);
+  font-size: 13px;
 }

@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MeenuBazaar
 
-## Getting Started
+A WhatsApp-first fish marketplace for Mangaluru. Boat owners post their catch on WhatsApp,
+it appears live on a public price board, and customers order on WhatsApp.
 
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+Fisherman / customer WhatsApp → WhatsApp Cloud API → n8n → Gemini (OpenRouter) → Supabase → live price board (this app)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## What's here
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Path | What it is |
+|---|---|
+| `app/PriceBoard.tsx` | The live price board: prices, kg left, ▲/▼ moves, "Order on WhatsApp" buttons |
+| `lib/supabase.ts` | Read-only Supabase connection for the browser |
+| `supabase/schema.sql` | Tables, safe functions (`save_catch`, `place_order`, …), access rules, live updates |
+| `supabase/seed.sql` | Demo boat and fish names with local spellings |
+| `supabase/test.sql` | Database self-test (every row should say PASS) |
+| `ai/reader.mjs` | Gemini prompts and JSON shapes that read catch reports and orders |
+| `scripts/check-setup.mjs` | `npm run check:setup`: checks the website's Supabase keys |
+| `scripts/test-ai.mjs` | `npm run test:ai`: sends 14 sample messages to Gemini and checks the readings |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Run it on your computer
 
-## Learn More
+1. `npm install`
+2. Copy `.env.example` to `.env.local` and fill in the values.
+3. `npm run check:setup`
+4. `npm run dev`, then open http://localhost:3000
 
-To learn more about Next.js, take a look at the following resources:
+## Deploy (Vercel)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Import this repo in Vercel and add these environment variables:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `NEXT_PUBLIC_WHATSAPP_NUMBER` (once the WhatsApp number is set up)
 
-## Deploy on Vercel
+Never add the Supabase secret key or the OpenRouter key to Vercel. Those live only in n8n.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Status
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- ✅ Database (Supabase) with stock-safe ordering
+- ✅ Live price board
+- ✅ AI reader tested with `google/gemini-3.7-flash`
+- ⏳ WhatsApp + n8n workflow
