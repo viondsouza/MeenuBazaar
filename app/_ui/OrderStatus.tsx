@@ -1,17 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { FishThumb } from "./FishPhoto";
-import { useRouter } from "next/navigation";
-import { addToCart } from "@/lib/cart";
 import { FishName } from "./bits";
 import { CheckIcon } from "../icons";
-import { CUT_LABEL, getListing, kgLeft, useOrders, useSold } from "@/lib/catalog";
+import { addToCart } from "@/lib/cart";
+import { CUT_LABEL, availableKg, useMarket, useOrders } from "@/lib/catalog";
 import { kgText, rupees } from "@/lib/format";
 
 const STEPS = [
-  { label: "Order placed", note: "Your fish is reserved." },
+  { label: "Order placed", note: "Your fish is reserved with the boats." },
   { label: "Cleaned & packed on ice", note: "At the harbour, before your slot." },
   { label: "Out for delivery", note: "A rider brings it in your slot." },
   { label: "Delivered", note: "Pay by UPI or cash." },
@@ -22,15 +21,7 @@ export default function OrderStatus() {
   const justPlaced = useSearchParams().get("new") === "1";
   const order = useOrders().find((o) => o.code === code);
   const router = useRouter();
-  const sold = useSold();
-
-  function orderAgain() {
-    for (const it of order?.items ?? []) {
-      const l = getListing(it.listingId);
-      if (l && kgLeft(l, sold) >= 0.5) addToCart({ ...it, pricePerKg: l.price }, kgLeft(l, sold));
-    }
-    router.push("/cart");
-  }
+  const market = useMarket();
 
   if (!order) {
     return (
@@ -45,16 +36,27 @@ export default function OrderStatus() {
     );
   }
 
+  function orderAgain() {
+    for (const l of order!.lines) {
+      addToCart({ fishKey: l.fishKey, fishName: l.fishName, fishKn: l.fishKn, cut: l.cut, kg: l.kg }, availableKg(l.fishKey, market));
+    }
+    router.push("/cart");
+  }
+
+  const boats = new Set(order.lines.flatMap((l) => l.parts.map((p) => p.boat)));
+
   return (
-    <div className="pad">
+    <div className="pad page-in">
       {justPlaced && (
         <div className="placed">
-          <span className="placed-icon">
+          <span className="placed-icon pop">
             <CheckIcon size={28} />
           </span>
           <div>
             <h1 className="page-title">Order placed!</h1>
-            <p className="muted">Thank you, {order.name.split(" ")[0]}. Your fresh catch is reserved.</p>
+            <p className="muted">
+              Thank you, {order.name.split(" ")[0]}. Your catch is reserved with {boats.size} {boats.size === 1 ? "boat" : "boats"}.
+            </p>
           </div>
         </div>
       )}
@@ -88,18 +90,21 @@ export default function OrderStatus() {
 
       <h2 className="h3">Your fish</h2>
       <ul className="cart-list">
-        {order.items.map((it, i) => (
+        {order.lines.map((l, i) => (
           <li key={i} className="cart-item">
-            <FishThumb fishKey={it.fishKey} />
+            <FishThumb fishKey={l.fishKey} />
             <div className="cart-info">
               <p className="cart-name">
-                <FishName name={it.fishName} kn={it.fishKn} />
+                <FishName name={l.fishName} kn={l.fishKn} />
               </p>
               <p className="muted small">
-                {kgText(it.kg)} · {CUT_LABEL[it.cut]} · {it.boat}
+                {kgText(l.kg)} · {CUT_LABEL[l.cut]}
+              </p>
+              <p className="split-mini">
+                {l.parts.map((p) => `${kgText(p.kg)} from ${p.boat} (${rupees(p.price)}/kg)`).join(" + ")}
               </p>
             </div>
-            <strong className="cart-price">{rupees(it.kg * it.pricePerKg)}</strong>
+            <strong className="cart-price">{rupees(l.fishTotal)}</strong>
           </li>
         ))}
       </ul>

@@ -23,7 +23,7 @@ export default function BottomNav() {
         <Link key={href} href={href} className={`tab${active(href) ? " tab-on" : ""}`} aria-current={active(href) ? "page" : undefined}>
           <span className="tab-icon">
             <Icon />
-            {href === "/cart" && count > 0 && <span className="tab-badge">{count}</span>}
+            {href === "/cart" && count > 0 && <span className="tab-badge" key={count}>{count}</span>}
           </span>
           {label}
         </Link>

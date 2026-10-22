@@ -1,51 +1,42 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import Image from "next/image";
+import { useState } from "react";
 import { FishThumb } from "./FishPhoto";
 import { FishName } from "./bits";
 import { CheckIcon, TrashIcon } from "../icons";
-import { addToCart, clearCart, removeFromCart, stepCartItem, useCart } from "@/lib/cart";
+import { addToCart, clearCart, removeFromCart, stepCartItem, useCart, type CartItem } from "@/lib/cart";
 import { setArea, usePrefs } from "@/lib/prefs";
 import { AREAS } from "@/lib/areas";
-import { CUT_LABEL, FEES, billFor, deliverySlots, getListing, kgLeft, placeOrder, useOrders, useSold, type Slot } from "@/lib/catalog";
+import { CUT_LABEL, FEES, availableKg, deliverySlots, placeOrder, priceCart, useMarket, useOrders, type Order } from "@/lib/catalog";
 import { kgText, rupees } from "@/lib/format";
 
 export default function CartCheckout() {
   const router = useRouter();
   const items = useCart();
-  const sold = useSold();
+  const market = useMarket();
   const orders = useOrders();
   const { area } = usePrefs();
-  const [slots, setSlots] = useState<Slot[] | null>(null);
-  const [slotId, setSlotId] = useState<string | null>(null);
+  const [slotPick, setSlotPick] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Slots depend on the current time, so they're worked out once the page is open.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      const s = deliverySlots();
-      setSlots(s);
-      setSlotId(s.find((x) => !x.full)?.id ?? null);
-    }, 0);
-    return () => clearTimeout(t);
-  }, []);
-
-  const bill = billFor(items);
-  const totalKg = items.reduce((s, i) => s + i.kg, 0);
+  const slots = market.hour !== null ? deliverySlots(market.hour) : null;
+  const earliest = slots?.find((s) => !s.full)?.id ?? null;
+  const slotId = slotPick && slots?.some((s) => s.id === slotPick && !s.full) ? slotPick : earliest;
+  const bill = priceCart(items, market);
+  const totalKg = bill.lines.reduce((s, l) => s + l.filled, 0);
   const toFreeDelivery = FEES.freeDeliveryOver - bill.fish;
 
-  // Put a past order's fish back in the cart (at today's stock).
-  function reorder(past: typeof items) {
-    for (const it of past) {
-      const l = getListing(it.listingId);
-      if (l && kgLeft(l, sold) >= 0.5) addToCart({ ...it, pricePerKg: l.price }, kgLeft(l, sold));
+  // Put a past order's fish back in the cart, at today's best boats.
+  function reorder(order: Order) {
+    for (const l of order.lines) {
+      addToCart({ fishKey: l.fishKey, fishName: l.fishName, fishKn: l.fishKn, cut: l.cut, kg: l.kg }, availableKg(l.fishKey, market));
     }
   }
 
@@ -61,7 +52,7 @@ export default function CartCheckout() {
     if (!slot || slot.full) return setError("Please choose a delivery slot.");
 
     setBusy(true);
-    const result = placeOrder({ name: name.trim(), phone: digits, address: address.trim(), area, slot: { day: slot.day, label: slot.label }, items });
+    const result = placeOrder({ name: name.trim(), phone: digits, address: address.trim(), area, slot: { day: slot.day, label: slot.label } }, items, market);
     if (!result.ok) {
       setBusy(false);
       return setError(result.message);
@@ -72,7 +63,7 @@ export default function CartCheckout() {
 
   if (items.length === 0) {
     return (
-      <div className="pad">
+      <div className="pad page-in">
         <h1 className="page-title">Your cart</h1>
         <div className="empty empty-big">
           <div className="empty-photo">
@@ -93,11 +84,11 @@ export default function CartCheckout() {
                   <Link href={`/order/${o.code}`}>
                     <span>
                       <strong>{o.code}</strong>
-                      <span className="muted small"> · {o.items.map((i) => i.fishName).join(", ")}</span>
+                      <span className="muted small"> · {o.lines.map((l) => l.fishName).join(", ")}</span>
                     </span>
                     <span>{rupees(o.total)}</span>
                   </Link>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => reorder(o.items)}>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => reorder(o)}>
                     Order again
                   </button>
                 </li>
@@ -110,34 +101,38 @@ export default function CartCheckout() {
   }
 
   return (
-    <form className="pad checkout" onSubmit={submit} noValidate>
+    <form className="pad checkout page-in" onSubmit={submit} noValidate>
       <h1 className="page-title">Your cart</h1>
       <p className="muted">
         {items.length} {items.length === 1 ? "item" : "items"} · {kgText(totalKg)}
       </p>
 
       <ul className="cart-list">
-        {items.map((it, i) => {
-          const l = getListing(it.listingId);
-          const left = l ? kgLeft(l, sold) : 0;
+        {bill.lines.map((line, i) => {
+          const it: CartItem = line.item;
+          const max = Math.min(20, availableKg(it.fishKey, market, it.listingId));
           return (
-            <li key={`${it.listingId}-${it.cut}`} className="cart-item">
+            <li key={`${it.fishKey}-${it.cut}-${it.listingId ?? "best"}`} className="cart-item">
               <FishThumb fishKey={it.fishKey} />
               <div className="cart-info">
                 <p className="cart-name">
                   <FishName name={it.fishName} kn={it.fishKn} />
                 </p>
                 <p className="muted small">
-                  {CUT_LABEL[it.cut]} · {it.boat} · {rupees(it.pricePerKg)}/kg
+                  {CUT_LABEL[it.cut]} · {line.parts.length === 1 ? line.parts[0].listing.boat.name : `${line.parts.length} boats`} ·{" "}
+                  {rupees(Math.round(line.avg))}/kg
                 </p>
-                {it.kg > left && <p className="warn small">Only {kgText(left)} left</p>}
+                {line.parts.length > 1 && (
+                  <p className="split-mini">{line.parts.map((p) => `${kgText(p.kg)} ${p.listing.boat.name}`).join(" + ")}</p>
+                )}
+                {line.short > 0 && <p className="warn small">Only {kgText(line.filled)} available now</p>}
                 <div className="cart-controls">
                   <div className="stepper stepper-sm" role="group" aria-label={`Quantity of ${it.fishName}`}>
                     <button type="button" onClick={() => stepCartItem(i, -0.5)} disabled={it.kg <= 0.5} aria-label="Less">
                       −
                     </button>
                     <span>{kgText(it.kg)}</span>
-                    <button type="button" onClick={() => stepCartItem(i, 0.5, left)} disabled={it.kg >= Math.min(20, left)} aria-label="More">
+                    <button type="button" onClick={() => stepCartItem(i, 0.5, max)} disabled={it.kg >= max} aria-label="More">
                       +
                     </button>
                   </div>
@@ -146,7 +141,7 @@ export default function CartCheckout() {
                   </button>
                 </div>
               </div>
-              <strong className="cart-price">{rupees(it.kg * it.pricePerKg)}</strong>
+              <strong className="cart-price">{rupees(line.fishTotal)}</strong>
             </li>
           );
         })}
@@ -191,24 +186,21 @@ export default function CartCheckout() {
         <p className="muted">Finding slots…</p>
       ) : (
         <div className="slots" role="radiogroup" aria-label="Delivery slot">
-          {slots.map((s) => {
-            const earliest = slots.find((x) => !x.full)?.id === s.id;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                role="radio"
-                aria-checked={slotId === s.id}
-                disabled={s.full}
-                className={`slot${slotId === s.id ? " slot-on" : ""}`}
-                onClick={() => setSlotId(s.id)}
-              >
-                <span className="slot-day">{s.day}</span>
-                <strong>{s.label}</strong>
-                <span>{s.full ? "Full" : earliest ? "Earliest" : "Available"}</span>
-              </button>
-            );
-          })}
+          {slots.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="radio"
+              aria-checked={slotId === s.id}
+              disabled={s.full}
+              className={`slot${slotId === s.id ? " slot-on" : ""}`}
+              onClick={() => setSlotPick(s.id)}
+            >
+              <span className="slot-day">{s.day}</span>
+              <strong>{s.label}</strong>
+              <span>{s.full ? "Full" : s.id === earliest ? "Earliest" : "Available"}</span>
+            </button>
+          ))}
         </div>
       )}
 
@@ -236,8 +228,13 @@ export default function CartCheckout() {
           <span>To pay</span>
           <span>{rupees(bill.total)}</span>
         </p>
-        {toFreeDelivery > 0 && (
-          <p className="bill-tip">Add {rupees(toFreeDelivery)} more fish for free delivery.</p>
+        {toFreeDelivery > 0 ? (
+          <div className="free-bar">
+            <span style={{ width: `${Math.min(100, (bill.fish / FEES.freeDeliveryOver) * 100)}%` }} />
+            <p>Add {rupees(toFreeDelivery)} more fish for free delivery</p>
+          </div>
+        ) : (
+          <p className="bill-tip">🎉 You&apos;ve got free delivery</p>
         )}
       </div>
 
@@ -264,7 +261,7 @@ export default function CartCheckout() {
       </div>
 
       {error && (
-        <p className="notice notice-error" role="alert">
+        <p className="notice notice-error shake" role="alert" key={error}>
           {error}
         </p>
       )}

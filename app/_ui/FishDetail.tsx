@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import FishPhoto from "./FishPhoto";
 import GradeSeal from "./GradeSeal";
 import HeartButton from "./HeartButton";
 import { FishName } from "./bits";
-import { BackIcon, BoatIcon, TruckIcon } from "../icons";
+import { BackIcon, TruckIcon } from "../icons";
 import { addToCart, type Cut } from "@/lib/cart";
 import { usePrefs } from "@/lib/prefs";
 import { AREAS, BUNDER, kmBetween } from "@/lib/areas";
-import { CUT_LABEL, FEES, LISTINGS, cutFee, deliverySlots, getListing, kgLeft, useSold } from "@/lib/catalog";
+import {
+  CUT_LABEL, FEES, allocate, availableKg, cutFee, deliverySlots, getFish, isEvening, offersFor, priceOf, stockOf, useMarket, whyBest,
+} from "@/lib/catalog";
 import { kgText, rupees } from "@/lib/format";
 
 const time12 = (hhmm: string) => {
@@ -26,20 +28,22 @@ const CUTS: { value: Cut; note: string; hint: string }[] = [
 ];
 
 export default function FishDetail() {
-  const { id } = useParams<{ id: string }>();
+  const { id: key } = useParams<{ id: string }>();
+  const pinnedFromLink = useSearchParams().get("boat") ?? "";
   const router = useRouter();
-  const sold = useSold();
+  const market = useMarket();
   const { area } = usePrefs();
+  const [boatChoice, setBoatChoice] = useState<string>(pinnedFromLink); // "" = best boat for me
   const [cut, setCut] = useState<Cut>("cleaned");
   const [kg, setKg] = useState(1);
   const [added, setAdded] = useState(false);
-  const listing = getListing(id);
+  const fish = getFish(key);
 
-  if (!listing) {
+  if (!fish) {
     return (
       <div className="pad">
         <div className="empty">
-          <p className="empty-title">This catch isn&apos;t on sale</p>
+          <p className="empty-title">We don&apos;t sell this fish</p>
           <p>
             <Link href="/">See today&apos;s catch</Link>
           </p>
@@ -48,25 +52,23 @@ export default function FishDetail() {
     );
   }
 
-  const { fish, boat } = listing;
-  const left = kgLeft(listing, sold);
-  const soldOut = left < 0.5;
-  const maxKg = Math.max(0.5, Math.min(left, 20));
-  const amount = Math.min(kg, maxKg);
-  const fishCost = amount * listing.price;
-  const cutting = cutFee(cut, amount);
-  const slot = deliverySlots().find((s) => !s.full);
+  const offers = offersFor(fish.key, market);
+  const pinned = offers.find((o) => o.id === boatChoice);
+  const listingId = pinned?.id;
+  const shown = pinned ?? offers[0];
+  const maxKg = Math.min(20, availableKg(fish.key, market, listingId));
+  const soldOut = maxKg < 0.5;
+  const amount = Math.max(0.5, Math.min(kg, maxKg));
+  const plan = allocate(fish.key, amount, market, listingId);
+  const cutting = cutFee(cut, plan.filled);
+  const slot = market.hour !== null ? deliverySlots(market.hour).find((s) => !s.full) : undefined;
   const chosenArea = AREAS.find((a) => a.name === area);
   const km = chosenArea ? kmBetween(BUNDER, chosenArea) : null;
-  const others = LISTINGS.filter((l) => l.fish.key === fish.key && l.id !== listing.id);
-  const drop = listing.lastPrice - listing.price;
+  const evening = isEvening(market);
 
   function add(goToCart: boolean) {
-    if (!listing) return;
-    addToCart(
-      { listingId: listing.id, fishKey: fish.key, fishName: fish.name, fishKn: fish.kn, boat: boat.name, harbour: boat.harbour, pricePerKg: listing.price, kg: amount, cut },
-      left,
-    );
+    if (!fish) return;
+    addToCart({ fishKey: fish.key, fishName: fish.name, fishKn: fish.kn, cut, kg: amount, listingId }, maxKg);
     if (goToCart) router.push("/cart");
     else {
       setAdded(true);
@@ -82,21 +84,26 @@ export default function FishDetail() {
           <BackIcon />
         </Link>
         <HeartButton fishKey={fish.key} name={fish.name} className="detail-heart" />
-        {listing.grade && (
-          <span className="detail-seal">
-            <GradeSeal grade={listing.grade} size={72} />
+        {shown?.grade && (
+          <span className="detail-seal" key={shown.id}>
+            <GradeSeal grade={shown.grade} size={72} />
           </span>
         )}
       </div>
 
       <div className="pad detail-body">
         <FishName name={fish.name} kn={fish.kn} as="h1" />
-        <p className="muted">{fish.english} · Landed {time12(listing.landed)} today</p>
-        <p className="big-price">
-          {rupees(listing.price)} <span>per kg</span>
-          {drop > 0 && <s className="was">{rupees(listing.lastPrice)}</s>}
+        <p className="muted">{fish.english}</p>
+        {shown && (
+          <p className="big-price">
+            {rupees(priceOf(shown, market))} <span>per kg</span>
+            {priceOf(shown, market) < shown.lastPrice && <s className="was">{rupees(shown.lastPrice)}</s>}
+            {evening && <span className="deal-pill">Evening deal −10%</span>}
+          </p>
+        )}
+        <p className={`stock${maxKg < 10 ? " low" : ""}`}>
+          {soldOut ? "Sold out today" : `${kgText(availableKg(fish.key, market))} available from ${offers.length} ${offers.length === 1 ? "boat" : "boats"}`}
         </p>
-        <p className={`stock${left < 10 ? " low" : ""}`}>{soldOut ? "Sold out today" : `${kgText(left)} left from this boat`}</p>
         <p className="about">{fish.about}</p>
 
         <dl className="facts">
@@ -118,22 +125,52 @@ export default function FishDetail() {
           </div>
         </dl>
 
-        <div className="seller">
-          <span className="seller-icon">
-            <BoatIcon />
-          </span>
-          <div>
-            <p className="seller-name">{boat.name}</p>
-            <p className="muted small">
-              {boat.type} · {boat.harbour}
-            </p>
-          </div>
-          <span className="seller-rating">★ {boat.rating.toFixed(1)}</span>
-        </div>
+        {offers.length > 0 && (
+          <>
+            <h2 className="h3">Which boat?</h2>
+            <div className="boats" role="radiogroup" aria-label="Boat">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={!pinned}
+                className={`boat boat-auto${!pinned ? " boat-on" : ""}`}
+                onClick={() => setBoatChoice("")}
+              >
+                <span className="boat-top">
+                  <strong>✨ Best boat for me</strong>
+                  <span className="boat-price">{rupees(priceOf(offers[0], market))}</span>
+                </span>
+                <span className="boat-sub">
+                  {offers[0].boat.name}, {offers[0].boat.harbour} · {whyBest(offers, market)}
+                  {offers.length > 1 ? ". Big orders are split across boats automatically." : ""}
+                </span>
+              </button>
+              {offers.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={pinned?.id === o.id}
+                  className={`boat${pinned?.id === o.id ? " boat-on" : ""}`}
+                  onClick={() => setBoatChoice(o.id)}
+                >
+                  <span className="boat-top">
+                    <strong>{o.boat.name}</strong>
+                    <span className="boat-price">{rupees(priceOf(o, market))}</span>
+                  </span>
+                  <span className="boat-sub">
+                    {o.boat.harbour} · {o.boat.type} · ★ {o.boat.rating.toFixed(1)} · landed {time12(o.landed)}
+                    {o.grade ? ` · Grade ${o.grade}` : " · not graded yet"} · {kgText(stockOf(o, market))} left
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
-        {listing.grade && (
+        {shown?.grade && (
           <p className="quality-note">
-            <strong>Grade {listing.grade}</strong> · Checked at the harbour for firm flesh, bright eyes and red gills before
+            <strong>Grade {shown.grade}</strong> · Checked at the harbour for firm flesh, bright eyes and red gills before
             packing.
           </p>
         )}
@@ -170,6 +207,32 @@ export default function FishDetail() {
                 </button>
               </div>
             </div>
+            <div className="quick-kg" role="group" aria-label="Quick amounts">
+              {[0.5, 1, 2, 5].filter((n) => n <= maxKg).map((n) => (
+                <button key={n} type="button" className={`chip${amount === n ? " chip-on" : ""}`} onClick={() => setKg(n)}>
+                  {kgText(n)}
+                </button>
+              ))}
+            </div>
+
+            {plan.parts.length > 1 && (
+              <div className="split" aria-live="polite">
+                <p className="split-title">
+                  ✨ Your {kgText(plan.filled)} comes from {plan.parts.length} boats
+                </p>
+                <ul>
+                  {plan.parts.map((p) => (
+                    <li key={p.listing.id}>
+                      <span>
+                        {kgText(p.kg)} · {p.listing.boat.name}, {p.listing.boat.harbour.replace("Mangaluru ", "")}
+                      </span>
+                      <span>{rupees(p.price)}/kg</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="split-avg">Average {rupees(Math.round(plan.avg))}/kg. You still get one delivery.</p>
+              </div>
+            )}
 
             <div className="eta">
               <TruckIcon />
@@ -183,17 +246,17 @@ export default function FishDetail() {
                     <span className="eta-note">Packed on ice. You choose the slot at checkout.</span>
                   </>
                 ) : (
-                  "No delivery slots left for today or tomorrow."
+                  "Checking delivery slots…"
                 )}
               </p>
             </div>
 
             <div className="line-total">
               <span>
-                {kgText(amount)} × {rupees(listing.price)}
+                {kgText(plan.filled)} fish {rupees(plan.fishTotal)}
                 {cutting > 0 ? ` + ${CUT_LABEL[cut].toLowerCase()} ${rupees(cutting)}` : ""}
               </span>
-              <strong>{rupees(fishCost + cutting)}</strong>
+              <strong>{rupees(plan.fishTotal + cutting)}</strong>
             </div>
           </>
         )}
@@ -202,28 +265,6 @@ export default function FishDetail() {
           <strong>❄ Keeping it fresh</strong>
           <p>Put it in the fridge as soon as it arrives and cook it the same day, or freeze it in a sealed box for up to 3 months.</p>
         </div>
-
-        {others.length > 0 && (
-          <>
-            <h2 className="h3">Also from other boats</h2>
-            <ul className="others">
-              {others.map((o) => (
-                <li key={o.id}>
-                  <Link href={`/fish/${o.id}`}>
-                    <span>
-                      <strong>{o.boat.name}</strong>
-                      <span className="muted small">
-                        {" "}
-                        · {o.boat.harbour} · ★ {o.boat.rating.toFixed(1)}
-                      </span>
-                    </span>
-                    <strong className={o.price < listing.price ? "cheaper" : ""}>{rupees(o.price)}/kg</strong>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
       </div>
 
       {!soldOut && (
@@ -232,7 +273,7 @@ export default function FishDetail() {
             {added ? "Added ✓" : "Add to cart"}
           </button>
           <button type="button" className="btn btn-coral" onClick={() => add(true)}>
-            Buy now · {rupees(fishCost + cutting)}
+            Buy now · {rupees(plan.fishTotal + cutting)}
           </button>
         </div>
       )}

@@ -4,21 +4,18 @@ import { createStore } from "./store";
 
 export type Cut = "whole" | "cleaned" | "fry";
 
-// One fish from one boat. The price is the one the customer saw; checkout refuses the
-// order if the boat has changed it since, so nobody pays a price they didn't agree to.
+// One fish, cut a certain way. Normally the best boats are picked at checkout (and a big
+// order is split across boats); listingId is set only if the customer chose one boat.
 export type CartItem = {
-  listingId: string;
   fishKey: string;
   fishName: string;
-  fishKn: string | null;
-  boat: string;
-  harbour: string;
-  pricePerKg: number;
-  kg: number;
+  fishKn: string;
   cut: Cut;
+  kg: number;
+  listingId?: string;
 };
 
-const cart = createStore<CartItem[]>("meenubazaar-cart", []);
+const cart = createStore<CartItem[]>("meenubazaar-cart-v2", []);
 
 export const useCart = cart.use;
 
@@ -27,9 +24,9 @@ export const useCart = cart.use;
 export function addToCart(item: CartItem, maxKg = 20) {
   const cap = Math.min(20, maxKg);
   cart.set((items) => {
-    const same = items.find((i) => i.listingId === item.listingId && i.cut === item.cut);
+    const same = items.find((i) => i.fishKey === item.fishKey && i.cut === item.cut && i.listingId === item.listingId);
     if (!same) return [...items, { ...item, kg: Math.min(cap, item.kg) }];
-    return items.map((i) => (i === same ? { ...i, kg: Math.min(cap, i.kg + item.kg), pricePerKg: item.pricePerKg } : i));
+    return items.map((i) => (i === same ? { ...i, kg: Math.min(cap, i.kg + item.kg) } : i));
   });
 }
 

@@ -6,12 +6,13 @@ import { useState } from "react";
 import FishPhoto from "./FishPhoto";
 import GradeSeal from "./GradeSeal";
 import HeartButton from "./HeartButton";
+import EveningBanner from "./EveningBanner";
 import { AreaSelect, LangToggle, Wordmark } from "./bits";
 import { CheckIcon, PlusIcon, SearchIcon } from "../icons";
 import { addToCart } from "@/lib/cart";
 import { useFavs } from "@/lib/favs";
 import { usePrefs } from "@/lib/prefs";
-import { DISHES, LISTINGS, cooksAs, kgLeft, useSold, type Group, type Listing } from "@/lib/catalog";
+import { DISHES, FISH, availableKg, cooksAs, offersFor, priceOf, useMarket, type Fish, type Group } from "@/lib/catalog";
 import { kgText, rupees } from "@/lib/format";
 
 const CATEGORIES: { value: Group | "all"; label: string; kn: string; photo: string }[] = [
@@ -28,43 +29,51 @@ export const time12 = (hhmm: string) => {
   return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 };
 
-const DEALS = LISTINGS.filter((l) => l.price < l.lastPrice).sort((a, b) => (b.lastPrice - b.price) / b.lastPrice - (a.lastPrice - a.price) / a.lastPrice);
-
 export default function ShopHome() {
-  const sold = useSold();
+  const market = useMarket();
   const favs = useFavs();
   const { lang } = usePrefs();
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState<Group | "all">("all");
-  const [dish, setDish] = useState<string>("");
+  const [dish, setDish] = useState("");
   const [savedOnly, setSavedOnly] = useState(false);
   const [sort, setSort] = useState<Sort>("fresh");
   const [added, setAdded] = useState<string | null>(null);
   const kn = lang === "kn";
 
-  const q = query.trim().toLowerCase();
-  const shown = LISTINGS.filter(
-    (l) =>
-      (group === "all" || l.fish.group === group) &&
-      (!dish || cooksAs(l.fish, dish)) &&
-      (!savedOnly || favs.includes(l.fish.key)) &&
-      (!q || [l.fish.name, l.fish.english, l.fish.kn, l.boat.name, l.boat.harbour, ...l.fish.bestFor].some((s) => s.toLowerCase().includes(q))),
-  ).sort((a, b) => {
-    const outA = kgLeft(a, sold) <= 0 ? 1 : 0;
-    const outB = kgLeft(b, sold) <= 0 ? 1 : 0;
-    if (outA !== outB) return outA - outB;
-    if (sort === "low") return a.price - b.price;
-    if (sort === "high") return b.price - a.price;
-    return b.landed.localeCompare(a.landed);
+  // One card per fish, priced at its best offer right now.
+  const cards = FISH.map((fish) => {
+    const offers = offersFor(fish.key, market);
+    const best = offers[0];
+    return { fish, offers, best, price: best ? priceOf(best, market) : 0, kg: availableKg(fish.key, market) };
   });
 
-  function quickAdd(l: Listing) {
-    addToCart(
-      { listingId: l.id, fishKey: l.fish.key, fishName: l.fish.name, fishKn: l.fish.kn, boat: l.boat.name, harbour: l.boat.harbour, pricePerKg: l.price, kg: 1, cut: "whole" },
-      kgLeft(l, sold),
-    );
-    setAdded(l.id);
-    setTimeout(() => setAdded((cur) => (cur === l.id ? null : cur)), 1800);
+  const deals = cards
+    .filter((c) => c.best && c.price < c.best.lastPrice)
+    .sort((a, b) => (b.best!.lastPrice - b.price) / b.best!.lastPrice - (a.best!.lastPrice - a.price) / a.best!.lastPrice);
+
+  const q = query.trim().toLowerCase();
+  const shown = cards
+    .filter(
+      ({ fish }) =>
+        (group === "all" || fish.group === group) &&
+        (!dish || cooksAs(fish, dish)) &&
+        (!savedOnly || favs.includes(fish.key)) &&
+        (!q || [fish.name, fish.english, fish.kn, ...fish.bestFor].some((s) => s.toLowerCase().includes(q))),
+    )
+    .sort((a, b) => {
+      const outA = a.best ? 0 : 1;
+      const outB = b.best ? 0 : 1;
+      if (outA !== outB) return outA - outB;
+      if (sort === "low") return a.price - b.price;
+      if (sort === "high") return b.price - a.price;
+      return (b.best?.landed ?? "").localeCompare(a.best?.landed ?? "");
+    });
+
+  function quickAdd(fish: Fish) {
+    addToCart({ fishKey: fish.key, fishName: fish.name, fishKn: fish.kn, cut: "whole", kg: 1 }, availableKg(fish.key, market));
+    setAdded(fish.key);
+    setTimeout(() => setAdded((cur) => (cur === fish.key ? null : cur)), 1800);
   }
 
   function clearFilters() {
@@ -73,6 +82,8 @@ export default function ShopHome() {
     setDish("");
     setSavedOnly(false);
   }
+
+  const boatsToday = new Set(cards.flatMap((c) => c.offers.map((o) => o.boat.id))).size;
 
   return (
     <>
@@ -93,14 +104,14 @@ export default function ShopHome() {
           <p className="hero-sub">
             {kn
               ? "ಮಂಗಳೂರು, ಮಲ್ಪೆ ಮತ್ತು ಗಂಗೊಳ್ಳಿಯ ದೋಣಿಗಳಿಂದ ಇಂದು ಬೆಳಿಗ್ಗೆ ಬಂದ ಮೀನು."
-              : `${LISTINGS.length} fresh catches landed this morning at Mangaluru, Malpe & Gangolli.`}
+              : `${boatsToday} boats landed this morning at Mangaluru, Malpe & Gangolli. We pick the best boat for every fish.`}
           </p>
           <a href="#catch" className="btn btn-coral hero-btn">
             {kn ? "ಮೀನು ನೋಡಿ" : "Shop today's catch"}
           </a>
         </div>
-        <svg className="wave" viewBox="0 0 520 40" preserveAspectRatio="none" aria-hidden>
-          <path d="M0,22 C70,6 140,38 220,22 C300,6 380,36 460,20 C490,14 510,16 520,18 L520,40 L0,40 Z" />
+        <svg className="wave" viewBox="0 0 1040 40" preserveAspectRatio="none" aria-hidden>
+          <path d="M0,22 C70,6 140,38 220,22 C300,6 380,36 460,20 C540,6 600,34 680,22 C760,8 830,36 900,20 C960,8 1000,18 1040,22 L1040,40 L0,40 Z" />
         </svg>
       </section>
 
@@ -116,8 +127,8 @@ export default function ShopHome() {
           <li>
             <span className="trust-icon">✓</span>
             <span>
-              <strong>Quality checked</strong>
-              <small>Graded at harbour</small>
+              <strong>Quality graded</strong>
+              <small>At the harbour</small>
             </span>
           </li>
           <li>
@@ -128,6 +139,8 @@ export default function ShopHome() {
             </span>
           </li>
         </ul>
+
+        <EveningBanner />
 
         <div className="cats" role="group" aria-label="Categories">
           {CATEGORIES.map((c) => (
@@ -146,7 +159,7 @@ export default function ShopHome() {
           ))}
         </div>
 
-        {DEALS.length > 0 && group === "all" && !dish && !savedOnly && !q && (
+        {deals.length > 0 && group === "all" && !dish && !savedOnly && !q && (
           <section aria-labelledby="deals-title">
             <div className="section-row">
               <h2 id="deals-title" className="h2">
@@ -157,14 +170,14 @@ export default function ShopHome() {
               </Link>
             </div>
             <div className="deals">
-              {DEALS.map((l) => (
-                <Link key={l.id} href={`/fish/${l.id}`} className="deal">
-                  <FishPhoto fish={l.fish} sizes="160px" className="deal-photo" />
-                  <span className="deal-off">−{Math.round(((l.lastPrice - l.price) / l.lastPrice) * 100)}%</span>
-                  <span className="deal-name">{kn ? <span className="kn">{l.fish.kn}</span> : l.fish.name}</span>
+              {deals.map(({ fish, best, price }) => (
+                <Link key={fish.key} href={`/fish/${fish.key}`} className="deal">
+                  <FishPhoto fish={fish} sizes="160px" className="deal-photo" />
+                  <span className="deal-off">−{Math.round(((best!.lastPrice - price) / best!.lastPrice) * 100)}%</span>
+                  <span className="deal-name">{kn ? <span className="kn">{fish.kn}</span> : fish.name}</span>
                   <span className="deal-price">
-                    {rupees(l.price)}
-                    <s>{rupees(l.lastPrice)}</s>
+                    {rupees(price)}
+                    <s>{rupees(best!.lastPrice)}</s>
                   </span>
                 </Link>
               ))}
@@ -189,13 +202,13 @@ export default function ShopHome() {
             <span className="sr-only">Search</span>
             <input
               type="search"
-              placeholder={kn ? "ಮೀನು ಹುಡುಕಿ: ಬಂಗುಡೆ, ಅಂಜಲ್…" : "Search fish, dish or boat…"}
+              placeholder={kn ? "ಮೀನು ಹುಡುಕಿ: ಬಂಗುಡೆ, ಅಂಜಲ್…" : "Search fish or dish, e.g. tandoori"}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
           </label>
 
-          <div className="chips" role="group" aria-label="Cooking for">
+          <div className="chips" role="group" aria-label="Cooking">
             <span className="chips-label">Cooking</span>
             {DISHES.map((d) => (
               <button
@@ -229,51 +242,56 @@ export default function ShopHome() {
           )}
 
           <ul className="grid">
-            {shown.map((l) => {
-              const left = kgLeft(l, sold);
-              const out = left <= 0;
-              const drop = l.price < l.lastPrice;
+            {shown.map(({ fish, offers, best, price, kg }, i) => {
+              const out = !best;
+              const drop = best && price < best.lastPrice;
               return (
-                <li key={l.id} className={`tile${out ? " tile-out" : ""}`}>
-                  <Link href={`/fish/${l.id}`} className="tile-link">
+                <li key={fish.key} className={`tile${out ? " tile-out" : ""}`} style={{ "--i": i } as React.CSSProperties}>
+                  <Link href={`/fish/${fish.key}`} className="tile-link">
                     <div className="tile-media">
-                      <FishPhoto fish={l.fish} sizes="(max-width: 520px) 50vw, 260px" />
-                      {l.grade && (
+                      <FishPhoto fish={fish} sizes="(max-width: 520px) 50vw, 260px" />
+                      {best?.grade && (
                         <span className="tile-seal">
-                          <GradeSeal grade={l.grade} size={46} />
+                          <GradeSeal grade={best.grade} size={46} />
                         </span>
                       )}
                       {drop && <span className="tile-tag">Price drop</span>}
-                      {out && <span className="tile-sold">Sold out</span>}
+                      {out && <span className="tile-sold">Sold out today</span>}
                     </div>
                     <div className="tile-body">
                       <h3 className="tile-name">
-                        {kn ? <span className="kn">{l.fish.kn}</span> : l.fish.name}
-                        <span className={`tile-alt${kn ? "" : " kn"}`}>{kn ? l.fish.name : l.fish.kn}</span>
+                        {kn ? <span className="kn">{fish.kn}</span> : fish.name}
+                        <span className={`tile-alt${kn ? "" : " kn"}`}>{kn ? fish.name : fish.kn}</span>
                       </h3>
-                      <p className="tile-sub">{l.fish.english}</p>
-                      <p className="tile-boat">
-                        ⚓ {l.boat.name} · {l.boat.harbour.replace("Mangaluru ", "")}
-                      </p>
-                      <p className="tile-meta">
-                        Landed {time12(l.landed)} · ★ {l.boat.rating.toFixed(1)}
-                      </p>
-                      <p className="tile-price">
-                        <strong>{rupees(l.price)}</strong>
-                        <span>/kg</span>
-                      </p>
-                      <p className={`tile-left${left < 10 ? " low" : ""}`}>{out ? "Sold out today" : `${kgText(left)} left`}</p>
+                      <p className="tile-sub">{fish.english}</p>
+                      {best && (
+                        <>
+                          <p className="tile-boat">
+                            ⚓ {best.boat.name} · {best.boat.harbour.replace("Mangaluru ", "")}
+                          </p>
+                          <p className="tile-meta">
+                            Landed {time12(best.landed)}
+                            {offers.length > 1 ? ` · ${offers.length} boats` : ""}
+                          </p>
+                          <p className="tile-price">
+                            {offers.length > 1 && <span className="from">from </span>}
+                            <strong>{rupees(price)}</strong>
+                            <span>/kg</span>
+                          </p>
+                          <p className={`tile-left${kg < 10 ? " low" : ""}`}>{kgText(kg)} available</p>
+                        </>
+                      )}
                     </div>
                   </Link>
-                  <HeartButton fishKey={l.fish.key} name={l.fish.name} className="tile-heart" />
+                  <HeartButton fishKey={fish.key} name={fish.name} className="tile-heart" />
                   {!out && (
                     <button
                       type="button"
-                      className={`add-btn${added === l.id ? " add-btn-done" : ""}`}
-                      onClick={() => quickAdd(l)}
-                      aria-label={`Add 1 kg ${l.fish.name} to cart`}
+                      className={`add-btn${added === fish.key ? " add-btn-done" : ""}`}
+                      onClick={() => quickAdd(fish)}
+                      aria-label={`Add 1 kg ${fish.name} to cart`}
                     >
-                      {added === l.id ? <CheckIcon size={20} /> : <PlusIcon size={20} />}
+                      {added === fish.key ? <CheckIcon size={20} /> : <PlusIcon size={20} />}
                     </button>
                   )}
                 </li>
@@ -287,7 +305,8 @@ export default function ShopHome() {
             <strong>MeenuBazaar</strong> · Fresh fish from Mangaluru, Malpe &amp; Gangolli boats
           </p>
           <p>
-            Demo store with sample prices and stock · <Link href="/credits">Photo credits</Link>
+            Demo store with sample prices and stock · <Link href="/how-it-works">How it works</Link> ·{" "}
+            <Link href="/credits">Photo credits</Link> · <Link href="/staff">Staff</Link>
           </p>
         </footer>
       </div>
