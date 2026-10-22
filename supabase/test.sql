@@ -48,6 +48,57 @@ begin
     case when p->>'kind' = 'order' and take_pending('919000000001') is null
          then 'PASS' else 'FAIL: ' || coalesce(p::text, 'null') end);
 
+  -- ─ A full WhatsApp conversation, as n8n will run it (Gemini's reading is typed in by hand) ─
+  perform reset_demo();
+
+  r := inbound(v_boat, 'bangude 50 220');
+  insert into test_results (test, result) values ('chat: fisherman message is sent to Gemini as a catch',
+    case when r->>'action' = 'read' and r->>'kind' = 'catch' and jsonb_array_length(r->'fish') > 0
+         then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := after_ai(v_boat, 'catch', '{"understood":true,"items":[{"fish":"bangude","kg":50,"price_per_kg":220}],"question":null}');
+  insert into test_results (test, result) values ('chat: bot repeats the catch and asks for YES',
+    case when r->>'reply' like '%Bangude: 50 kg at ₹220/kg%YES%' then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := inbound(v_boat, 'Yes!');
+  insert into test_results (test, result) values ('chat: fisherman YES puts the catch live',
+    case when r->>'reply' like '%Live on the MeenuBazaar board%'
+              and (select kg_left from listings where fish_key = 'bangude') = 50
+         then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := inbound('919000000002', 'Order 1 kg Bangude cleaned');
+  insert into test_results (test, result) values ('chat: customer message is sent to Gemini as an order',
+    case when r->>'action' = 'read' and r->>'kind' = 'order' then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := after_ai('919000000002', 'order', '{"understood":true,"fish":"bangude","kg":1,"cleaned":true,"question":null}');
+  insert into test_results (test, result) values ('chat: bot shows the order total and asks for YES',
+    case when r->>'reply' like '%1 kg Bangude* (cleaned)%₹220%YES%' then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := inbound('919000000002', 'yes');
+  insert into test_results (test, result) values ('chat: customer YES confirms, sends UPI and a pack alert to the boat',
+    case when r->>'reply' like '%Order confirmed%UPI%' and r->>'alert_phone' = v_boat and r->>'alert' like '%pack%'
+              and (select kg_left from listings where fish_key = 'bangude') = 49
+         then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := after_ai('919000000002', 'order', '{"understood":true,"fish":"bangude","kg":60,"cleaned":false,"question":null}');
+  insert into test_results (test, result) values ('chat: asking for more than the stock is refused before YES',
+    case when r->>'reply' like '%only 49 kg%' then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := after_ai('919000000002', 'order', '{"understood":true,"fish":"unknown","kg":1,"cleaned":false,"question":null}');
+  insert into test_results (test, result) values ('chat: an unknown fish gets today''s list instead',
+    case when r->>'reply' like '%don''t have that fish%Bangude ₹220/kg%' then 'PASS' else 'FAIL: ' || r::text end);
+
+  r := after_ai('919000000002', 'order', '{"understood":false,"fish":"unknown","kg":1,"cleaned":false,"question":"A MeenuBazaar person will reply soon."}');
+  insert into test_results (test, result) values ('chat: a question (not an order) gets Gemini''s polite reply',
+    case when r->>'reply' = 'A MeenuBazaar person will reply soon.' then 'PASS' else 'FAIL: ' || r::text end);
+
+  perform after_ai('919000000002', 'order', '{"understood":true,"fish":"bangude","kg":2,"cleaned":false,"question":null}');
+  r := inbound('919000000002', 'no');
+  insert into test_results (test, result) values ('chat: NO cancels, and a later YES finds nothing waiting',
+    case when r->>'reply' like '%cancelled%' and inbound('919000000002', 'yes')->>'reply' like '%nothing waiting%'
+              and (select kg_left from listings where fish_key = 'bangude') = 49
+         then 'PASS' else 'FAIL: ' || r::text end);
+
   perform reset_demo();
 end;
 $$;

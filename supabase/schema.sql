@@ -245,6 +245,222 @@ begin
 end;
 $$;
 
+-- ═══ WhatsApp conversation ════════════════════════════════════════════════
+-- n8n calls inbound() for every WhatsApp message. It answers YES/NO itself;
+-- anything else comes back as action='read', n8n asks Gemini to read it, and
+-- then calls after_ai() with what Gemini read. Both return the WhatsApp reply:
+--   { action: 'reply', phone, reply, alert_phone?, alert? }
+-- alert is the "pack" message for the boat owner when an order is confirmed.
+
+-- ₹220 / 1.5 kg: numbers without trailing zeros.
+create or replace function fmt_num(p numeric)
+returns text
+language sql
+immutable
+as $$ select trim_scale(round(p, 2))::text $$;
+
+create or replace function help_text(p_kind text)
+returns text
+language sql
+immutable
+as $$
+  select case when p_kind = 'catch'
+    then E'Send your catch like this: *bangude 50 220*\n(fish, kg, price per kg)'
+    else E'To order, send the fish and kg, for example: *1 kg bangude cleaned*'
+  end
+$$;
+
+-- "Today: Bangude ₹230/kg, Anjal ₹650/kg" or a sorry if nothing is listed.
+create or replace function todays_fish()
+returns text
+language sql
+stable
+set search_path = public
+as $$
+  select coalesce(
+    'Today: ' || string_agg(f.name || ' ₹' || fmt_num(l.price_per_kg) || '/kg', ', ' order by f.name),
+    'Nothing is listed yet today. The boats post their catch every morning.')
+  from (select distinct on (fish_key) fish_key, price_per_kg
+          from listings where kg_left > 0
+         order by fish_key, price_per_kg) l
+  join fish f on f.key = l.fish_key
+$$;
+
+create or replace function inbound(p_phone text, p_text text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_kind text := case when exists (select 1 from boats where phone = p_phone) then 'catch' else 'order' end;
+  v_word text := regexp_replace(lower(coalesce(p_text, '')), '[^a-z]', '', 'g');
+  v_pending jsonb;
+  v_item jsonb;
+  v_r jsonb;
+  v_lines text := '';
+  v_d jsonb;
+  v_cut text;
+begin
+  if coalesce(trim(p_text), '') = '' then
+    return jsonb_build_object('action', 'reply', 'phone', p_phone,
+      'reply', E'Sorry, I can only read text messages for now.\n' || help_text(v_kind));
+  end if;
+
+  -- YES: do what is waiting for this person.
+  if v_word in ('yes', 'y', 'yess', 'ok', 'okay', 'confirm', 'haan', 'ha', 'houdu', 'howdu', 'sari')
+     or trim(p_text) in ('👍', '✅') then
+    v_pending := take_pending(p_phone);
+    if v_pending is null then
+      return jsonb_build_object('action', 'reply', 'phone', p_phone,
+        'reply', E'There is nothing waiting for a YES.\n' || help_text(v_kind));
+    end if;
+    v_d := v_pending->'data';
+
+    if v_pending->>'kind' = 'catch' then
+      for v_item in select * from jsonb_array_elements(v_d->'items') loop
+        v_r := save_catch(p_phone, v_item->>'fish', (v_item->>'kg')::numeric, (v_item->>'price_per_kg')::numeric);
+        v_lines := v_lines || E'\n' || case when (v_r->>'ok')::boolean
+          then '✅ ' || (v_r->>'fish_name') || ': ' || fmt_num((v_r->>'kg')::numeric) || ' kg at ₹'
+               || fmt_num((v_r->>'price_per_kg')::numeric) || '/kg'
+          else '⚠️ ' || (v_item->>'fish') || ': not saved (' || (v_r->>'reason') || ')' end;
+      end loop;
+      return jsonb_build_object('action', 'reply', 'phone', p_phone,
+        'reply', '*Live on the MeenuBazaar board now:*' || v_lines
+                 || E'\n\nYou will get a message here when someone orders.');
+    end if;
+
+    -- An order.
+    v_r := place_order(p_phone, v_d->>'fish', (v_d->>'kg')::numeric, coalesce((v_d->>'cleaned')::boolean, false));
+    v_cut := case when (v_d->>'cleaned')::boolean then ' (cleaned)' else '' end;
+    if not (v_r->>'ok')::boolean then
+      return jsonb_build_object('action', 'reply', 'phone', p_phone, 'reply',
+        case v_r->>'reason'
+          when 'not_enough' then 'Sorry, only ' || fmt_num((v_r->>'kg_left')::numeric) || ' kg of '
+               || (v_r->>'fish_name') || E' is left now. Send a smaller amount, e.g. *1 kg '
+               || lower(v_r->>'fish_name') || '*.'
+          when 'not_listed' then 'Sorry, ' || (v_r->>'fish_name') || E' just sold out.\n' || todays_fish()
+          else E'Sorry, that order could not be placed.\n' || help_text('order')
+        end);
+    end if;
+    return jsonb_build_object(
+      'action', 'reply',
+      'phone', p_phone,
+      'reply', E'✅ *Order confirmed*\n' || fmt_num((v_r->>'kg')::numeric) || ' kg ' || (v_r->>'fish_name') || v_cut
+               || E'\n₹' || fmt_num((v_r->>'price_per_kg')::numeric) || '/kg × ' || fmt_num((v_r->>'kg')::numeric)
+               || ' kg = *₹' || fmt_num((v_r->>'total')::numeric) || E'*\n\nPlease pay by UPI to *'
+               || (v_r->>'upi_id') || '* (' || (v_r->>'boat_name') || E').\nOrder ID: '
+               || upper(left(v_r->>'order_id', 8)) || E'\nWe will message you when it is on the way.',
+      'alert_phone', v_r->>'boat_phone',
+      'alert', E'📦 *New order: please pack*\n' || fmt_num((v_r->>'kg')::numeric) || ' kg ' || (v_r->>'fish_name') || v_cut
+               || E'\nOrder ID: ' || upper(left(v_r->>'order_id', 8))
+               || E'\nStock left: ' || fmt_num((v_r->>'kg_left')::numeric) || ' kg');
+  end if;
+
+  -- NO: forget what was waiting.
+  if v_word in ('no', 'n', 'cancel', 'illa', 'beda', 'nahi', 'stop') then
+    delete from pending where phone = p_phone;
+    return jsonb_build_object('action', 'reply', 'phone', p_phone,
+      'reply', E'Okay, cancelled.\n' || help_text(v_kind));
+  end if;
+
+  -- Anything else: n8n should ask Gemini to read it, using this fish list.
+  return jsonb_build_object(
+    'action', 'read',
+    'phone', p_phone,
+    'kind', v_kind,
+    'text', p_text,
+    'fish', (select jsonb_agg(jsonb_build_object('key', key, 'english_name', english_name, 'aliases', aliases)
+                              order by key) from fish));
+end;
+$$;
+
+create or replace function after_ai(p_phone text, p_kind text, p_reading jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_item jsonb;
+  v_lines text := '';
+  v_fish fish%rowtype;
+  v_kg numeric;
+  v_cleaned boolean;
+  v_price numeric;
+  v_most numeric;
+  v_ask text := nullif(trim(p_reading->>'question'), '');
+begin
+  if p_reading is null or jsonb_typeof(p_reading) <> 'object' then
+    return jsonb_build_object('action', 'reply', 'phone', p_phone,
+      'reply', 'Sorry, I could not read that just now. Please send it again.');
+  end if;
+
+  -- ─ A fisherman's catch ─
+  if p_kind = 'catch' then
+    if not coalesce((p_reading->>'understood')::boolean, false)
+       or jsonb_array_length(coalesce(p_reading->'items', '[]')) = 0 then
+      return jsonb_build_object('action', 'reply', 'phone', p_phone,
+        'reply', coalesce(v_ask || E'\n\n', '') || help_text('catch'));
+    end if;
+    for v_item in select * from jsonb_array_elements(p_reading->'items') loop
+      select * into v_fish from fish where key = v_item->>'fish';
+      if not found then
+        return jsonb_build_object('action', 'reply', 'phone', p_phone,
+          'reply', E'I don''t know one of those fish names. Please use names like bangude, bhutai, anjal, maanji or etti.\n'
+                   || help_text('catch'));
+      end if;
+      if coalesce((v_item->>'kg')::numeric, 0) <= 0 or coalesce((v_item->>'price_per_kg')::numeric, 0) <= 0 then
+        return jsonb_build_object('action', 'reply', 'phone', p_phone,
+          'reply', E'Please send both the kg and the price for ' || v_fish.name || E'.\n' || help_text('catch'));
+      end if;
+      v_lines := v_lines || E'\n• ' || v_fish.name || ': ' || fmt_num((v_item->>'kg')::numeric) || ' kg at ₹'
+                 || fmt_num((v_item->>'price_per_kg')::numeric) || '/kg';
+    end loop;
+    perform set_pending(p_phone, 'catch', jsonb_build_object('items', p_reading->'items'));
+    return jsonb_build_object('action', 'reply', 'phone', p_phone,
+      'reply', 'Please check your catch:' || v_lines || E'\n\nReply *YES* to put it live, or *NO* to cancel.');
+  end if;
+
+  -- ─ A customer's order ─
+  -- First: is it an order at all? (A question like "do you deliver?" also has no fish.)
+  if not coalesce((p_reading->>'understood')::boolean, false) then
+    return jsonb_build_object('action', 'reply', 'phone', p_phone,
+      'reply', coalesce(v_ask, help_text('order')));
+  end if;
+  if p_reading->>'fish' = 'unknown' then
+    return jsonb_build_object('action', 'reply', 'phone', p_phone,
+      'reply', E'Sorry, we don''t have that fish.\n' || todays_fish() || E'\n\n' || help_text('order'));
+  end if;
+
+  select * into v_fish from fish where key = p_reading->>'fish';
+  v_kg := coalesce((p_reading->>'kg')::numeric, 1);
+  v_cleaned := coalesce((p_reading->>'cleaned')::boolean, false);
+  if not found or v_kg <= 0 or v_kg > 100 then
+    return jsonb_build_object('action', 'reply', 'phone', p_phone, 'reply', help_text('order'));
+  end if;
+
+  -- Check stock now, so the customer hears about it before saying YES.
+  select min(price_per_kg) into v_price from listings where fish_key = v_fish.key and kg_left >= v_kg;
+  if v_price is null then
+    select max(kg_left) into v_most from listings where fish_key = v_fish.key;
+    return jsonb_build_object('action', 'reply', 'phone', p_phone, 'reply',
+      case when coalesce(v_most, 0) > 0
+        then 'Sorry, only ' || fmt_num(v_most) || ' kg of ' || v_fish.name || E' is left. Send a smaller amount, e.g. *'
+             || fmt_num(v_most) || ' kg ' || v_fish.key || '*.'
+        else 'Sorry, ' || v_fish.name || E' is not available right now.\n' || todays_fish() end);
+  end if;
+
+  perform set_pending(p_phone, 'order',
+    jsonb_build_object('fish', v_fish.key, 'kg', v_kg, 'cleaned', v_cleaned));
+  return jsonb_build_object('action', 'reply', 'phone', p_phone,
+    'reply', E'Please check your order:\n*' || fmt_num(v_kg) || ' kg ' || v_fish.name || '*'
+             || case when v_cleaned then ' (cleaned)' else '' end
+             || E'\n₹' || fmt_num(v_price) || '/kg × ' || fmt_num(v_kg) || ' kg = *₹' || fmt_num(round(v_kg * v_price, 2))
+             || E'*\n\nReply *YES* to order, or *NO* to cancel.');
+end;
+$$;
+
 -- ─── Who can do what ─────────────────────────────────────────────────────
 -- Only the server (secret key, used by n8n) may run the functions that change data.
 revoke execute on function save_catch(text, text, numeric, numeric) from public, anon, authenticated;
@@ -252,6 +468,10 @@ revoke execute on function place_order(text, text, numeric, boolean) from public
 revoke execute on function set_pending(text, text, jsonb) from public, anon, authenticated;
 revoke execute on function take_pending(text) from public, anon, authenticated;
 revoke execute on function reset_demo() from public, anon, authenticated;
+revoke execute on function inbound(text, text) from public, anon, authenticated;
+revoke execute on function after_ai(text, text, jsonb) from public, anon, authenticated;
+grant execute on function inbound(text, text) to service_role;
+grant execute on function after_ai(text, text, jsonb) to service_role;
 grant execute on function resolve_fish(text) to service_role;
 grant execute on function save_catch(text, text, numeric, numeric) to service_role;
 grant execute on function place_order(text, text, numeric, boolean) to service_role;

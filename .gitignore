@@ -42,3 +42,6 @@ next-env.d.ts
 
 # allow the example env file
 !.env.example
+
+# n8n workflow with your project settings filled in
+n8n/*.local.json
