@@ -13,7 +13,7 @@ import { addToCart, type Cut } from "@/lib/cart";
 import { usePrefs } from "@/lib/prefs";
 import { AREAS, BUNDER, kmBetween } from "@/lib/areas";
 import {
-  CUT_LABEL, FEES, RECIPES, allocate, availableKg, cutFee, deliverySlots, getFish, isEvening, offersFor, priceHistory, priceOf, stockOf, useMarket, whyBest,
+  AUCTION_RATE, CUT_LABEL, FEES, RECIPES, allocate, availableKg, boatGain, cutFee, deliverySlots, getFish, isEvening, offersFor, priceHistory, priceOf, stockOf, useMarket, whyBest,
 } from "@/lib/catalog";
 import { kgText, rupees } from "@/lib/format";
 
@@ -35,7 +35,7 @@ export default function FishDetail() {
   const market = useMarket();
   const { area } = usePrefs();
   const [boatChoice, setBoatChoice] = useState<string>(pinnedFromLink); // "" = best boat for me
-  const [cut, setCut] = useState<Cut>("cleaned");
+  const [cut, setCut] = useState<Cut>("whole");
   const [kg, setKg] = useState(1);
   const [added, setAdded] = useState(false);
   const fish = getFish(key);
@@ -62,6 +62,9 @@ export default function FishDetail() {
   const amount = Math.max(0.5, Math.min(kg, maxKg));
   const plan = allocate(fish.key, amount, market, listingId);
   const cutting = cutFee(cut, plan.filled);
+  // Roughly what's left once scales, gut and head are off (to the nearest 50 g).
+  const cleanKg = Math.round(((plan.filled * fish.cleanYield) / 100) * 20) / 20;
+  const cleanText = cleanKg < 1 ? `${Math.round(cleanKg * 1000)} g` : kgText(cleanKg);
   const slot = market.hour !== null ? deliverySlots(market.hour).find((s) => !s.full) : undefined;
   const chosenArea = AREAS.find((a) => a.name === area);
   const km = chosenArea ? kmBetween(BUNDER, chosenArea) : null;
@@ -100,6 +103,12 @@ export default function FishDetail() {
             {rupees(priceOf(shown, market))} <span>per kg</span>
             {priceOf(shown, market) < shown.lastPrice && <s className="was">{rupees(shown.lastPrice)}</s>}
             {evening && <span className="deal-pill">Evening deal −10%</span>}
+          </p>
+        )}
+        {shown && boatGain(fish.key, priceOf(shown, market)) > 0 && (
+          <p className="boat-gain">
+            ⚓ {shown.boat.name} gets {rupees(boatGain(fish.key, priceOf(shown, market)))}/kg more than today&apos;s auction rate (
+            {rupees(AUCTION_RATE[fish.key])}/kg)
           </p>
         )}
         <p className={`stock${maxKg < 10 ? " low" : ""}`}>
@@ -263,6 +272,11 @@ export default function FishDetail() {
               <span>
                 {kgText(plan.filled)} fish {rupees(plan.fishTotal)}
                 {cutting > 0 ? ` + ${CUT_LABEL[cut].toLowerCase()} ${rupees(cutting)}` : ""}
+                <span className="after-clean">
+                  {cut === "whole"
+                    ? `Weighed as caught. About ${cleanText} after cleaning at home.`
+                    : `Priced on ${kgText(plan.filled)} as caught. You get about ${cleanText} after cleaning.`}
+                </span>
               </span>
               <strong>{rupees(plan.fishTotal + cutting)}</strong>
             </div>

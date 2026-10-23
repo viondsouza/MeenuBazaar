@@ -108,6 +108,7 @@ export default function ShopHome() {
           <p className="hero-kicker">
             <span className="live-dot" aria-hidden /> {kn ? "ಇಂದು ಬೆಳಿಗ್ಗೆ ಬಂದ ಮೀನು" : "Landed this morning · Bunder, Malpe, Gangolli"}
           </p>
+          <span className="hero-demo">{kn ? "ಡೆಮೊ · ಮಾದರಿ ದರಗಳು" : "Demo · sample boats & prices"}</span>
           <h1 className="hero-title">
             {kn ? (
               "ಮಂಗಳೂರಿನ ದೋಣಿಗಳಿಂದ ಇಂದಿನ ಮೀನು"

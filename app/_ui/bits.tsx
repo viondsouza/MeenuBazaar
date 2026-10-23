@@ -81,6 +81,15 @@ export function DemoTag() {
   return <span className="pill pill-demo">Demo listing</span>;
 }
 
+// A clear strip on the cart and order pages: this is a demo, nothing is really delivered.
+export function DemoBanner() {
+  return (
+    <p className="demo-banner" role="note">
+      <strong>Demo shop</strong> · sample boats and prices. No fish is delivered and nothing is charged.
+    </p>
+  );
+}
+
 export function Notice({ children }: { children: React.ReactNode }) {
   return <p className="notice">{children}</p>;
 }

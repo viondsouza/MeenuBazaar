@@ -9,11 +9,11 @@
   --navy: #0b2940;
   --navy-2: #0f3a57;
   --ink: #0b2940;
-  --muted: #5d7280;
+  --muted: #526875;
   --line: #d5e3e8;
-  --coral: #e0512f;
-  --coral-dark: #c23f1f;
-  --teal: #0f7f80;
+  --coral: #c9441f; /* white text on it reads at 4.8:1 */
+  --coral-dark: #a8361a;
+  --teal: #0c7374;
   --teal-bg: #dbf0ee;
   --ocean: #0d5c78;
   --sand: #f6eddf;
@@ -995,7 +995,7 @@ form .action-bar {
 
 .fields {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1014,6 +1014,8 @@ form .action-bar {
 
 .field input,
 .field select {
+  width: 100%;
+  min-width: 0;
   height: 46px;
   padding: 0 12px;
   border-radius: 12px;
@@ -3854,4 +3856,62 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+/* ─── Checkout errors, demo labels, honest weights ─── */
+
+.field input[aria-invalid="true"],
+.field select[aria-invalid="true"] {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px var(--red-bg);
+}
+
+.field-error {
+  color: var(--red);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.demo-banner {
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--warn-bg);
+  border: 1px solid #f1d49a;
+  color: var(--warn);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.hero-demo {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgb(255 241 214 / 92%);
+  color: #6b4200;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+.boat-gain {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--teal);
+}
+
+.after-clean {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.status-toggle:disabled {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-color: #f1d49a;
+  cursor: not-allowed;
 }

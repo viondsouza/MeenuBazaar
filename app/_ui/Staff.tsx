@@ -41,9 +41,18 @@ export default function Staff() {
     runs.set(k, [...(runs.get(k) ?? []), o]);
   }
 
-  const setHeld = (id: string, value: boolean) =>
-    setOps((o) => ({ ...o, held: { ...o.held, [id]: value }, approved: value ? o.approved : { ...o.approved, [id]: true } }));
-  const setWeight = (id: string, kg: number) => setOps((o) => ({ ...o, kg: { ...o.kg, [id]: kg } }));
+  const setHeld = (id: string, value: boolean) => setOps((o) => ({ ...o, held: { ...o.held, [id]: value } }));
+  // Only after the boat owner confirms a far-off price (in the real flow, by replying in chat).
+  const approvePrice = (id: string) => setOps((o) => ({ ...o, held: { ...o.held, [id]: false }, approved: { ...o.approved, [id]: true } }));
+  // Save a weight when staff leave the box. An empty box or a silly number puts the old value back.
+  const saveWeight = (id: string, input: HTMLInputElement, current: number) => {
+    const kg = Number(input.value);
+    if (input.value.trim() === "" || !Number.isFinite(kg) || kg < 0 || kg > 2000) {
+      input.value = String(current);
+      return;
+    }
+    if (kg !== current) setOps((o) => ({ ...o, kg: { ...o.kg, [id]: kg } }));
+  };
 
   return (
     <div className="pad page-in">
@@ -77,14 +86,16 @@ export default function Staff() {
                 <strong>
                   {l.fish.name} · {l.boat.name}
                 </strong>
-                <span>{priceWarning(l)}. Maybe they meant ₹{l.price * 10}?</span>
+                <span>
+                  {priceWarning(l)}. Maybe they meant ₹{l.price * 10}? Ask the boat owner to confirm before it goes on sale.
+                </span>
               </p>
               <div className="alert-actions">
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => setHeld(l.id, true)}>
                   Keep on hold
                 </button>
-                <button type="button" className="btn btn-coral btn-sm" onClick={() => setHeld(l.id, false)}>
-                  Approve anyway
+                <button type="button" className="btn btn-coral btn-sm" onClick={() => approvePrice(l.id)}>
+                  Owner confirmed ₹{l.price}
                 </button>
               </div>
             </div>
@@ -104,6 +115,8 @@ export default function Staff() {
         <ul className="staff-list">
           {LISTINGS.map((l) => {
             const live = isLive(l, market);
+            // A price waiting for the owner's confirmation can't be switched on from here.
+            const needsCheck = !!priceWarning(l) && !market.ops.approved[l.id];
             return (
               <li key={l.id} className={live ? "" : "is-held"}>
                 <FishThumb fishKey={l.fish.key} />
@@ -117,11 +130,14 @@ export default function Staff() {
                   <label className="weigh">
                     Weighed kg
                     <input
+                      key={market.ops.kg[l.id] ?? "as-posted"}
                       type="number"
                       min={0}
+                      max={2000}
                       step={0.5}
-                      value={market.ops.kg[l.id] ?? l.kg}
-                      onChange={(e) => setWeight(l.id, Math.max(0, Number(e.target.value)))}
+                      defaultValue={market.ops.kg[l.id] ?? l.kg}
+                      onBlur={(e) => saveWeight(l.id, e.currentTarget, market.ops.kg[l.id] ?? l.kg)}
+                      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
                     />
                   </label>
                 </div>
@@ -129,9 +145,11 @@ export default function Staff() {
                   type="button"
                   className={`status-toggle${live ? " on" : ""}`}
                   aria-pressed={live}
+                  aria-label={`${l.fish.name}, ${l.boat.name}: ${needsCheck ? "price check needed" : live ? "live" : "on hold"}`}
+                  disabled={needsCheck}
                   onClick={() => setHeld(l.id, live)}
                 >
-                  {live ? "Live" : "On hold"}
+                  {needsCheck ? "Price check" : live ? "Live" : "On hold"}
                 </button>
               </li>
             );

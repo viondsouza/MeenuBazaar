@@ -3,15 +3,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FishThumb } from "./FishPhoto";
-import { FishName } from "./bits";
+import { DemoBanner, FishName } from "./bits";
 import { CheckIcon, TrashIcon } from "../icons";
 import { addToCart, clearCart, removeFromCart, stepCartItem, useCart, type CartItem } from "@/lib/cart";
 import { setArea, usePrefs } from "@/lib/prefs";
 import { AREAS } from "@/lib/areas";
-import { CUT_LABEL, FEES, availableKg, deliverySlots, placeOrder, priceCart, townPrice, useMarket, useOrders, type Order } from "@/lib/catalog";
+import { CUT_LABEL, FEES, availableKg, boatGain, deliverySlots, placeOrder, priceCart, useMarket, useOrders, type Order } from "@/lib/catalog";
 import { kgText, rupees } from "@/lib/format";
+
+type Field = "name" | "phone" | "address" | "area";
 
 export default function CartCheckout() {
   const router = useRouter();
@@ -24,7 +26,10 @@ export default function CartCheckout() {
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [badField, setBadField] = useState<Field | null>(null);
   const [busy, setBusy] = useState(false);
+  // Blocks a second tap straight away (state updates arrive a moment later).
+  const placing = useRef(false);
 
   const slots = market.hour !== null ? deliverySlots(market.hour) : null;
   const earliest = slots?.find((s) => !s.full)?.id ?? null;
@@ -32,9 +37,8 @@ export default function CartCheckout() {
   const bill = priceCart(items, market);
   const totalKg = bill.lines.reduce((s, l) => s + l.filled, 0);
   const toFreeDelivery = FEES.freeDeliveryOver - bill.fish;
-  // Estimate of what the same fish costs at a town market, to show what buying direct saves.
-  const townTotal = bill.lines.reduce((s, l) => s + l.filled * townPrice(l.item.fishKey), 0);
-  const saved = Math.round(townTotal - bill.fish);
+  // How much more the boats get for this fish than the harbour auction would pay them.
+  const boatsExtra = Math.round(bill.lines.reduce((s, l) => s + l.parts.reduce((t, p) => t + p.kg * boatGain(l.item.fishKey, p.price), 0), 0));
 
   // Put a past order's fish back in the cart, at today's best boats.
   function reorder(order: Order) {
@@ -43,25 +47,60 @@ export default function CartCheckout() {
     }
   }
 
+  // Show the problem next to the field, then scroll to it and put the cursor there.
+  function fail(field: Field | null, message: string) {
+    setError(message);
+    setBadField(field);
+    if (field) {
+      const el = document.getElementById(`f-${field}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      el?.focus({ preventScroll: true });
+    }
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (placing.current) return;
     setError(null);
+    setBadField(null);
     const digits = phone.replace(/\D/g, "").replace(/^91(?=\d{10}$)/, "");
-    if (name.trim().length < 2) return setError("Please enter your name.");
-    if (!/^[6-9]\d{9}$/.test(digits)) return setError("Please enter a 10-digit mobile number.");
-    if (address.trim().length < 8) return setError("Please enter your house and street.");
-    if (!area) return setError("Please choose your area.");
+    if (name.trim().length < 2 || !/\p{L}/u.test(name)) return fail("name", "Please enter your name.");
+    if (!/^[6-9]\d{9}$/.test(digits)) return fail("phone", "Please enter a 10-digit mobile number.");
+    if (address.trim().length < 8 || !/\p{L}/u.test(address)) return fail("address", "Please enter your house and street.");
+    if (!area) return fail("area", "Please choose your area.");
     const slot = slots?.find((s) => s.id === slotId);
-    if (!slot || slot.full) return setError("Please choose a delivery slot.");
+    if (!slot || slot.full) return fail(null, "Please choose a delivery slot.");
 
+    placing.current = true;
     setBusy(true);
     const result = placeOrder({ name: name.trim(), phone: digits, address: address.trim(), area, slot: { day: slot.day, label: slot.label } }, items, market);
     if (!result.ok) {
+      placing.current = false;
       setBusy(false);
-      return setError(result.message);
+      return fail(null, result.message);
     }
-    clearCart();
+    // Stay "busy" until the order page opens, so the empty-cart screen never flashes up
+    // under the customer's finger.
     router.push(`/order/${result.code}?new=1`);
+    clearCart();
+  }
+
+  const fieldError = (field: Field) =>
+    badField === field && error ? (
+      <span className="field-error" id={`f-${field}-error`} role="alert">
+        {error}
+      </span>
+    ) : null;
+  const invalid = (field: Field) =>
+    badField === field ? { "aria-invalid": true, "aria-describedby": `f-${field}-error` } : {};
+
+  if (items.length === 0 && busy) {
+    return (
+      <div className="pad page-in">
+        <h1 className="page-title">Placing your order…</h1>
+        <p className="muted">Opening your order page.</p>
+      </div>
+    );
   }
 
   if (items.length === 0) {
@@ -105,6 +144,7 @@ export default function CartCheckout() {
 
   return (
     <form className="pad checkout page-in" onSubmit={submit} noValidate>
+      <DemoBanner />
       <h1 className="page-title">Your cart</h1>
       <p className="muted">
         {items.length} {items.length === 1 ? "item" : "items"} · {kgText(totalKg)}
@@ -159,19 +199,22 @@ export default function CartCheckout() {
       <div className="fields">
         <label className="field">
           <span>Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" placeholder="Asha Rao" />
+          <input id="f-name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" placeholder="Asha Rao" required {...invalid("name")} />
+          {fieldError("name")}
         </label>
         <label className="field">
           <span>Mobile</span>
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="98450 12345" />
+          <input id="f-phone" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="98450 12345" required {...invalid("phone")} />
+          {fieldError("phone")}
         </label>
         <label className="field field-wide">
           <span>House, street, landmark</span>
-          <input value={address} onChange={(e) => setAddress(e.target.value)} autoComplete="street-address" placeholder="Flat 2, Lighthouse Hill Road" />
+          <input id="f-address" value={address} onChange={(e) => setAddress(e.target.value)} autoComplete="street-address" placeholder="Flat 2, Lighthouse Hill Road" required {...invalid("address")} />
+          {fieldError("address")}
         </label>
         <label className="field field-wide">
           <span>Area</span>
-          <select value={area} onChange={(e) => setArea(e.target.value)}>
+          <select id="f-area" value={area} onChange={(e) => setArea(e.target.value)} required {...invalid("area")}>
             <option value="">Choose your area</option>
             {AREAS.map((a) => (
               <option key={a.name} value={a.name}>
@@ -179,6 +222,7 @@ export default function CartCheckout() {
               </option>
             ))}
           </select>
+          {fieldError("area")}
         </label>
       </div>
 
@@ -231,10 +275,10 @@ export default function CartCheckout() {
           <span>To pay</span>
           <span>{rupees(bill.total)}</span>
         </p>
-        {saved > 0 && (
+        {boatsExtra > 0 && (
           <p className="saved">
-            <span>💚 You save about {rupees(saved)}</span>
-            <span>vs a typical town-market price ({rupees(Math.round(townTotal))})</span>
+            <span>⚓ Boats get {rupees(boatsExtra)} more</span>
+            <span>than today&apos;s harbour auction would pay them for this fish (demo rates)</span>
           </p>
         )}
         {toFreeDelivery > 0 ? (
@@ -269,7 +313,7 @@ export default function CartCheckout() {
         </div>
       </div>
 
-      {error && (
+      {error && !badField && (
         <p className="notice notice-error shake" role="alert" key={error}>
           {error}
         </p>

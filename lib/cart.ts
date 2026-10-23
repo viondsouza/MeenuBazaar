@@ -15,7 +15,14 @@ export type CartItem = {
   listingId?: string;
 };
 
-const cart = createStore<CartItem[]>("meenubazaar-cart-v2", []);
+const CUTS: Cut[] = ["whole", "cleaned", "fry"];
+
+// Saved cart lines that are broken are dropped, and kg is kept between 0.5 and 20.
+const cart = createStore<CartItem[]>("meenubazaar-cart-v2", [], (items) =>
+  items
+    .filter((i) => i && typeof i.fishKey === "string" && typeof i.fishName === "string" && CUTS.includes(i.cut) && Number.isFinite(i.kg) && i.kg > 0)
+    .map((i) => ({ ...i, kg: Math.min(20, Math.max(0.5, i.kg)) })),
+);
 
 export const useCart = cart.use;
 

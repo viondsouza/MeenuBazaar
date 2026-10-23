@@ -4,7 +4,7 @@
 // This is sample data for the demo. Later the catch will come from boat owners via chat
 // (see supabase/ and n8n/), and this file will be replaced by live listings.
 import { useSyncExternalStore } from "react";
-import { createStore } from "./store";
+import { createStore, keepEntries } from "./store";
 import type { CartItem, Cut } from "./cart";
 
 export type Group = "fish" | "prawns" | "shellfish";
@@ -109,12 +109,22 @@ export const LISTINGS: Listing[] = [
   L("marvai-hanuman", "marvai", "hanuman", 140, 140, 50, "06:20", true),
 ];
 
-// Today's harbour reference rate per kg (what the auction is paying). Used to catch typos:
-// a boat price far from this is held for staff to check instead of going live.
+// Today's usual direct price per kg for each fish. Used to catch typos (a boat price far
+// from this is held for a check instead of going live) and for the 7-day price chart.
 export const REFERENCE_RATE: Record<string, number> = {
   bangude: 220, bhutai: 170, anjal: 950, maanji: 1120, "kappu-maanji": 640, kane: 410, balchatte: 255,
   kedar: 305, modhe: 370, etti: 530, "tiger-etti": 860, denji: 430, bondas: 390, marvai: 140,
 };
+
+// What the commission agents at the harbour auction pay a boat per kg today (demo figures).
+// Selling direct, a boat gets its own price instead, which is more than this.
+export const AUCTION_RATE: Record<string, number> = {
+  bangude: 180, bhutai: 140, anjal: 780, maanji: 920, "kappu-maanji": 520, kane: 335, balchatte: 210,
+  kedar: 250, modhe: 305, etti: 435, "tiger-etti": 705, denji: 350, bondas: 320, marvai: 115,
+};
+
+// How much more per kg a boat gets selling here than at the auction (0 if not more).
+export const boatGain = (fishKey: string, pricePerKg: number) => Math.max(0, pricePerKg - (AUCTION_RATE[fishKey] ?? pricePerKg));
 
 export const HARBOURS = ["Mangaluru Bunder", "Malpe", "Gangolli"];
 export const getListing = (id: string) => LISTINGS.find((l) => l.id === id);
@@ -123,13 +133,19 @@ export const getFish = (key: string) => FISH.find((f) => f.key === key);
 // ─── What changes during the day (saved in this browser for the demo) ───────
 
 // kg sold per listing, so stock goes down after an order.
-const sold = createStore<Record<string, number>>("meenubazaar-demo-sold", {});
+const kgOk = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 10000;
+const sold = createStore<Record<string, number>>("meenubazaar-demo-sold", {}, (s) => keepEntries(s, kgOk));
 export const useSold = sold.use;
 
 // Staff decisions: listings approved despite a price warning, listings put on hold,
 // and weights corrected after the harbour checker weighs the catch.
 export type Ops = { approved: Record<string, boolean>; held: Record<string, boolean>; kg: Record<string, number> };
-const ops = createStore<Ops>("meenubazaar-demo-ops", { approved: {}, held: {}, kg: {} });
+const isBool = (v: unknown) => typeof v === "boolean";
+const ops = createStore<Ops>("meenubazaar-demo-ops", { approved: {}, held: {}, kg: {} }, (o) => ({
+  approved: keepEntries(o.approved, isBool),
+  held: keepEntries(o.held, isBool),
+  kg: keepEntries(o.kg, kgOk),
+}));
 export const useOps = ops.use;
 export const setOps = ops.set;
 
@@ -176,11 +192,11 @@ export const EVENING_DEAL = { fromHour: 16, off: 0.1 }; // 10% off everything af
 
 export const isEvening = (m: Market) => m.hour !== null && m.hour >= EVENING_DEAL.fromHour;
 
-// A price far from the harbour rate (under 60% or over 160%) is probably a typo.
+// A price far from the usual price (under 60% or over 160%) is probably a typo.
 export function priceWarning(l: Listing) {
   const ref = REFERENCE_RATE[l.fish.key];
   if (!ref) return null;
-  if (l.price < ref * 0.6 || l.price > ref * 1.6) return `₹${l.price}/kg is far from today's harbour rate of ₹${ref}/kg`;
+  if (l.price < ref * 0.6 || l.price > ref * 1.6) return `₹${l.price}/kg is far from today's usual price of ₹${ref}/kg`;
   return null;
 }
 
@@ -306,7 +322,14 @@ export type Order = {
   total: number;
 };
 
-const orders = createStore<Order[]>("meenubazaar-demo-orders-v2", []);
+// Saved orders missing their code, lines or slot are dropped rather than breaking the page.
+const orders = createStore<Order[]>("meenubazaar-demo-orders-v2", [], (list) =>
+  list.filter(
+    (o) =>
+      o && typeof o.code === "string" && typeof o.name === "string" && Number.isFinite(o.total) && o.slot && typeof o.slot.label === "string" &&
+      Array.isArray(o.lines) && o.lines.every((l) => l && typeof l.fishName === "string" && Array.isArray(l.parts)),
+  ),
+);
 export const useOrders = orders.use;
 
 // Works out every cart line against today's boats. Lines for the same fish share its stock.
@@ -390,11 +413,6 @@ export function priceHistory(fishKey: string, today: number) {
   const past = Array.from({ length: 6 }, () => Math.round((ref * (0.9 + rand() * 0.22)) / 5) * 5);
   return [...past, today];
 }
-
-// What the same fish usually costs at a town market or from a door-to-door vendor,
-// after the agent's and the vendor's cut. An estimate for the "you save" line.
-export const TOWN_MARKUP = 1.35;
-export const townPrice = (fishKey: string) => Math.round(((REFERENCE_RATE[fishKey] ?? 0) * TOWN_MARKUP) / 10) * 10;
 
 // A quick Mangalorean way to cook each fish.
 export const RECIPES: Record<string, { title: string; time: string; steps: string[] }> = {

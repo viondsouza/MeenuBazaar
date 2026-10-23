@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { FishThumb } from "./FishPhoto";
-import { FishName } from "./bits";
+import { DemoBanner, FishName } from "./bits";
 import { CheckIcon } from "../icons";
 import { addToCart } from "@/lib/cart";
 import { CUT_LABEL, availableKg, useMarket, useOrders } from "@/lib/catalog";
@@ -47,6 +47,7 @@ export default function OrderStatus() {
 
   return (
     <div className="pad page-in">
+      <DemoBanner />
       {justPlaced && (
         <div className="placed">
           <span className="placed-icon pop">
@@ -75,7 +76,7 @@ export default function OrderStatus() {
       </div>
 
       <ol className="timeline">
-        {STEPS.map((s, i) => (
+        {STEPS.map((s, i) => (i === 1 && order.lines.every((l) => l.cut === "whole") ? { ...s, label: "Packed on ice" } : s)).map((s, i) => (
           <li key={s.label} className={i === 0 ? "now" : ""}>
             <span className="timeline-dot" aria-hidden>
               {i === 0 ? <CheckIcon size={14} /> : null}

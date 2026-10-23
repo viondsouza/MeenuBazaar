@@ -7,7 +7,7 @@ import { FishThumb } from "./FishPhoto";
 import { TopBar } from "./bits";
 import PriceTrend from "./PriceTrend";
 import { usePrefs } from "@/lib/prefs";
-import { FISH, REFERENCE_RATE, isEvening, offersFor, priceHistory, priceOf, stockOf, useMarket, whyBest } from "@/lib/catalog";
+import { AUCTION_RATE, FISH, isEvening, offersFor, priceHistory, priceOf, stockOf, useMarket, whyBest } from "@/lib/catalog";
 import { kgText, rupees } from "@/lib/format";
 
 // Compare today's price of one fish across boats and harbours, best pick first.
@@ -19,7 +19,7 @@ export default function Prices() {
   const rows = offersFor(fishKey, market);
   const max = Math.max(1, ...rows.map((r) => priceOf(r, market)));
   const kn = lang === "kn";
-  const ref = REFERENCE_RATE[fishKey];
+  const auction = AUCTION_RATE[fishKey];
 
   return (
     <div className="pad page-in">
@@ -50,7 +50,7 @@ export default function Prices() {
               {fish.name} <span className="kn muted">{fish.kn}</span>
             </h2>
             <p className="muted small">
-              {fish.english} · harbour rate today {rupees(ref)}/kg
+              {fish.english} · auction pays boats {rupees(auction)}/kg today
             </p>
           </div>
         </div>
