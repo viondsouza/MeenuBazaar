@@ -3533,3 +3533,325 @@ html {
     transform: translate(-30px, 20px) scale(1.2);
   }
 }
+
+/* ─── More sea: moving waves, light from the surface, bubbles, glassy bottom bar ─── */
+
+:root {
+  --sea-1: #e2f2f6;
+  --sea-2: #bfe2ec;
+  --sea-3: #7cc7da;
+  --sea-shadow: 0 8px 22px rgb(13 92 120 / 9%);
+}
+
+body {
+  background: linear-gradient(180deg, #cfe5ed 0%, #b9d8e3 100%) fixed;
+}
+
+.app {
+  background: linear-gradient(180deg, var(--sea-1) 0, var(--cream) 340px, var(--cream) 72%, #ddeef3 100%);
+  isolation: isolate;
+}
+
+.screen {
+  position: relative;
+  z-index: 1;
+}
+
+/* The sea behind every page, fixed to the phone-width column. */
+.sea {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: min(100%, 520px);
+  transform: translateX(-50%);
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Soft light rays coming down from the surface. */
+.sea-light {
+  position: absolute;
+  top: -60px;
+  left: -30%;
+  right: -30%;
+  height: 360px;
+  background:
+    radial-gradient(45% 55% at 25% 0%, rgb(124 199 218 / 40%), transparent 70%),
+    radial-gradient(40% 50% at 80% 5%, rgb(127 224 228 / 30%), transparent 70%),
+    repeating-linear-gradient(105deg, transparent 0 34px, rgb(255 255 255 / 45%) 34px 40px, transparent 40px 86px);
+  -webkit-mask-image: linear-gradient(180deg, #000 10%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 10%, transparent 100%);
+  opacity: 0.55;
+  animation: sea-rays 12s ease-in-out infinite alternate;
+}
+
+@keyframes sea-rays {
+  from {
+    transform: translateX(-24px) skewX(-4deg);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateX(24px) skewX(4deg);
+    opacity: 0.65;
+  }
+}
+
+/* Bubbles drifting up, behind the content and in the hero. */
+.sea-bubbles span,
+.hero-bubbles span {
+  position: absolute;
+  bottom: -24px;
+  left: calc(6% + var(--b) * 17%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid rgb(13 92 120 / 22%);
+  background: radial-gradient(circle at 32% 30%, rgb(255 255 255 / 85%), rgb(255 255 255 / 8%) 62%);
+  animation: bubble-rise calc(16s + var(--b) * 3s) linear infinite;
+  animation-delay: calc(var(--b) * -4.7s);
+}
+
+.sea-bubbles span:nth-child(2n),
+.hero-bubbles span:nth-child(2n) {
+  width: 6px;
+  height: 6px;
+}
+
+.sea-bubbles span:nth-child(3n),
+.hero-bubbles span:nth-child(3n) {
+  width: 14px;
+  height: 14px;
+}
+
+@keyframes bubble-rise {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  50% {
+    transform: translate(12px, -50vh);
+  }
+  88% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-8px, -100vh);
+    opacity: 0;
+  }
+}
+
+.hero-bubbles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.hero-bubbles span {
+  border-color: rgb(255 255 255 / 40%);
+  background: radial-gradient(circle at 32% 30%, rgb(255 255 255 / 55%), rgb(255 255 255 / 4%) 62%);
+  animation-name: bubble-rise-hero;
+}
+
+@keyframes bubble-rise-hero {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(10px, -420px);
+    opacity: 0;
+  }
+}
+
+/* Layered waves: each strip is twice as wide and slides by half, so the loop is seamless. */
+.sea-waves {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 56px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.sea-wave {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 200%;
+  height: 100%;
+  animation: sea-drift 16s linear infinite;
+}
+
+.sea-wave-back {
+  animation-duration: 24s;
+  animation-direction: reverse;
+}
+
+.sea-wave-mid {
+  height: 82%;
+  animation-duration: 15s;
+}
+
+.sea-wave-front {
+  height: 60%;
+  animation-duration: 10s;
+}
+
+@keyframes sea-drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Hero: teal swells over the deep navy, then the page colour. */
+.hero-body {
+  z-index: 1;
+}
+
+.hero-waves {
+  bottom: -1px;
+  height: 58px;
+  z-index: 2;
+}
+
+.hero-waves .sea-wave-back {
+  fill: #3aa6c0;
+  opacity: 0.35;
+}
+
+.hero-waves .sea-wave-mid {
+  fill: #2a8fae;
+  opacity: 0.55;
+}
+
+.hero-waves .sea-wave-front {
+  fill: var(--cream);
+}
+
+/* Gentle waves resting just above the bottom bar. */
+.sea-floor {
+  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) - 4px);
+  height: 64px;
+}
+
+.sea-floor .sea-wave-back {
+  fill: var(--sea-3);
+  opacity: 0.22;
+}
+
+.sea-floor .sea-wave-mid {
+  fill: var(--sea-2);
+  opacity: 0.45;
+}
+
+.sea-floor .sea-wave-front {
+  fill: #a9d7e4;
+  opacity: 0.3;
+}
+
+/* Bottom bar: frosted glass with a sea-blue edge; the current tab sits on a soft pill. */
+.bottom-nav {
+  background: rgb(255 255 255 / 70%);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  backdrop-filter: blur(16px) saturate(1.5);
+  border-top: 0;
+  box-shadow: 0 -10px 28px rgb(13 92 120 / 10%);
+}
+
+.bottom-nav::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--sea-3) 20%, #7fe0e4 50%, var(--sea-3) 80%, transparent);
+  background-size: 200% 100%;
+  animation: shimmer-line 6s linear infinite;
+}
+
+@keyframes shimmer-line {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.tab-on {
+  color: var(--ocean);
+}
+
+.tab-icon {
+  isolation: isolate;
+}
+
+.tab-on .tab-icon::before {
+  content: "";
+  position: absolute;
+  inset: -4px -16px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #d4eef4, #bfe4ee);
+  z-index: -1;
+  animation: pop 0.35s ease;
+}
+
+/* Cards float a little on the water. */
+.tile,
+.panel,
+.card-block,
+.boat,
+.bill,
+.pick,
+.trust,
+.deal,
+.cart-item {
+  box-shadow: var(--sea-shadow);
+}
+
+.tile:hover {
+  box-shadow: 0 14px 30px rgb(13 92 120 / 16%);
+}
+
+/* A light sheen sweeps across a fish photo when you point at it. */
+.tile-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 35%, rgb(255 255 255 / 35%) 50%, transparent 65%);
+  transform: translateX(-120%);
+  transition: transform 0.8s ease;
+  pointer-events: none;
+}
+
+.tile:hover .tile-media::after {
+  transform: translateX(120%);
+}
+
+/* Page headers on inner pages get a soft sea tint. */
+.topbar,
+.ai-head {
+  position: relative;
+}
+
+.page-title,
+.topbar-title {
+  background: linear-gradient(90deg, var(--navy), var(--ocean));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

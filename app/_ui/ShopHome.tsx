@@ -7,6 +7,7 @@ import FishPhoto from "./FishPhoto";
 import GradeSeal from "./GradeSeal";
 import HeartButton from "./HeartButton";
 import EveningBanner from "./EveningBanner";
+import SeaWaves from "./SeaWaves";
 import ai from "@/lib/ai-insights.json";
 import { AreaSelect, LangToggle, Wordmark } from "./bits";
 import { CheckIcon, PlusIcon, SearchIcon } from "../icons";
@@ -153,9 +154,12 @@ export default function ShopHome() {
             </Link>
           </div>
         </div>
-        <svg className="wave" viewBox="0 0 1040 40" preserveAspectRatio="none" aria-hidden>
-          <path d="M0,22 C70,6 140,38 220,22 C300,6 380,36 460,20 C540,6 600,34 680,22 C760,8 830,36 900,20 C960,8 1000,18 1040,22 L1040,40 L0,40 Z" />
-        </svg>
+        <div className="hero-bubbles" aria-hidden>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <span key={i} style={{ "--b": i } as React.CSSProperties} />
+          ))}
+        </div>
+        <SeaWaves className="hero-waves" />
       </section>
 
       <div className="wrap">
